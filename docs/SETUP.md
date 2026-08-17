@@ -1230,8 +1230,18 @@ Expected:
 5. Confirm the dashboard considers itself healthy:
 
    ```
-   curl -s http://localhost:8000/healthz
+   curl -s "http://$(tailscale ip -4):8000/healthz"
    ```
+
+   Copy that line exactly, including the `$(` and `)`. The `$(tailscale ip -4)`
+   part runs that command first and drops its answer into the address, so you do
+   not have to type your server's private address by hand.
+
+   It has to be the private address rather than `localhost`. Step 2 told the
+   dashboard to offer itself on the tailnet address only, and that instruction
+   applies to the server talking to itself as much as to anything else — asking
+   `localhost` for the dashboard gets no answer, because nothing is listening
+   there. That is the arrangement working as intended.
 
    Expected — one long line. The three `true` values are the important part:
 
@@ -1295,7 +1305,7 @@ Expected:
 
 ### Check before continuing
 
-`curl -s http://localhost:8000/healthz` prints `"ok":true`, and
+`curl -s "http://$(tailscale ip -4):8000/healthz"` prints `"ok":true`, and
 `sudo ss -ltnp | grep 8000` shows your `100.` address rather than `0.0.0.0`.
 
 ---

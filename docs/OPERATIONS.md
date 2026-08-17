@@ -151,14 +151,20 @@ internet — stop it immediately with `sudo docker compose down` and fix
 ### Step 6 — Ask the dashboard directly
 
 ```
-curl -s http://localhost:8000/healthz
+curl -s "http://$(tailscale ip -4):8000/healthz"
 ```
+
+The `$(tailscale ip -4)` part fills in this server's private address. That address
+is required — the dashboard listens on the tailnet address only, so `localhost`
+gets no answer even when everything is working.
 
 - **`"ok":true`** — the dashboard is fine and the problem is between your device
   and the server. Go back to step 1.
 - **`"ok":false`** — one of the checks failed. The `checks` section names which
   one, and each has a section below.
 - **`Connection refused`** — it is not actually listening. Go to step 3.
+- **No output at all** — `curl -s` stays quiet about connection errors. Run it
+  again without the `-s` to see the reason.
 
 ---
 
@@ -357,7 +363,7 @@ before something is due.
    ```
 
    ```
-   curl -s http://localhost:8000/healthz
+   curl -s "http://$(tailscale ip -4):8000/healthz"
    ```
 
    You want `(healthy)` and `"ok":true`.
@@ -435,7 +441,7 @@ a damaged backup over a working database turns one problem into two.
 6. Confirm:
 
    ```
-   curl -s http://localhost:8000/healthz
+   curl -s "http://$(tailscale ip -4):8000/healthz"
    ```
 
    You want `"ok":true`, with a `schema_version` matching what the restore printed.
