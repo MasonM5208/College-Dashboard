@@ -906,8 +906,10 @@ not the server — read each step's heading carefully.
    sudo nano /etc/college-dashboard/env
    ```
 
-   `nano` is a simple text editor inside the terminal. Type the five lines below,
-   substituting your own values. There must be no spaces around the `=` signs.
+   `nano` is a simple text editor inside the terminal. Type the five lines below.
+
+   **Every value shown here is a made-up example.** Four of the five have to be
+   replaced with your own. There must be no spaces around the `=` signs.
 
    ```
    BACKUP_AGE_RECIPIENT=age1ql3z7hjy54pw3hyww5ayyfg7zqgvc7w3j2elw8zmrj2kg5sfn9aqmcac8p
@@ -917,8 +919,25 @@ not the server — read each step's heading carefully.
    RCLONE_CONFIG_B2_KEY=K003xY9pQr2sT4uV6wX8yZ0aB2cD4eF
    ```
 
-   Use the **public** key from step 3 for `BACKUP_AGE_RECIPIENT` — the one
-   starting `age1`, never the one starting `AGE-SECRET-KEY-`.
+   Where each value comes from:
+
+   | Setting | What to put there |
+   |---|---|
+   | `BACKUP_AGE_RECIPIENT` | The **public** key printed in step 3, beginning `age1`. Never the one beginning `AGE-SECRET-KEY-`. |
+   | `BACKUP_B2_BUCKET` | The bucket name you chose in step 6. |
+   | `RCLONE_CONFIG_B2_TYPE` | **Type `b2` exactly as shown.** This one is not yours to change — it names the storage service. |
+   | `RCLONE_CONFIG_B2_ACCOUNT` | The **keyID** from step 7. |
+   | `RCLONE_CONFIG_B2_KEY` | The **applicationKey** from step 7. |
+
+   The last two names are misleading, and it is worth knowing why:
+   `RCLONE_CONFIG_B2_ACCOUNT` does **not** hold your Backblaze email address or
+   account name. `rclone`, the program that uploads the backups, refers to the
+   keyID as the "account". Both values appeared together on the page immediately
+   after you clicked **Create New Key**.
+
+   If you have already navigated away from that page, the `applicationKey` cannot
+   be shown again. Go back to step 7 and create a new key, then delete the unused
+   one from the **Application Keys** page.
 
    To save and leave nano: press `Control` and `O` together, press `Return` to
    confirm the filename, then press `Control` and `X` together.
