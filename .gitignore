@@ -1,0 +1,24 @@
+# Deploy-time values (tailnet IP, timezone). Never committed — see docs/SECRETS.md.
+.env
+
+# The database and its WAL sidecars. These live in /srv/dashboard/data on the VPS;
+# this pattern catches stray local copies made while testing.
+*.db
+*.db-wal
+*.db-shm
+*.db.age
+
+# Local scratch data directory used when running the container on a laptop.
+/data/
+/scratch/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+
+# macOS
+.DS_Store
