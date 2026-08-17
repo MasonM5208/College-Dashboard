@@ -623,6 +623,12 @@ laptop.
    on. It is not secret in the way a password is, but there is no reason to post
    it anywhere either.
 
+   If you have destroyed and rebuilt a server at any point, its old entry stays
+   registered and the new one is given a name with a number added, such as
+   `dashboard-1`. Remove the stale one at
+   <https://login.tailscale.com/admin/machines> so the name is freed and the list
+   keeps matching reality.
+
 5. **On your MacBook**, install Tailscale from <https://tailscale.com/download>.
    Open the downloaded file, drag Tailscale to Applications, open it, and sign in
    with the same account you used in step 3.
@@ -1351,9 +1357,46 @@ the dashboard from both of your devices.
 
 ### Troubleshooting
 
-- **The page will not load on the iPhone** — check Tailscale is on. Open the
-  Tailscale app; the switch at the top should be green and `dashboard` should be
-  listed.
+- **The page loads on the MacBook but not on the iPhone.** The Mac working proves
+  the dashboard and the private network are both fine, so the cause is on the
+  phone. Work through these in order.
+
+  **First, type the address in full, with `http://` on the front:**
+
+  ```
+  http://100.92.147.61:8000
+  ```
+
+  Without the prefix, Safari often treats what you typed as something to search
+  for and hands it to Google, or tries `https://`, which this server does not
+  speak. If you landed on a search results page or saw a message about a secure
+  connection, this was it.
+
+  **Second, turn off iCloud Private Relay for this network.** Private Relay sends
+  Safari's traffic through Apple's servers, which cannot reach an address that
+  exists only on your private network. This is the most common cause on an iPhone
+  where everything else looks right.
+
+  Open **Settings**, tap **Wi-Fi**, tap the **ⓘ** beside the network you are on,
+  and turn **Limit IP Address Tracking** off. If you pay for iCloud+, also check
+  **Settings → your name → iCloud → Private Relay**.
+
+  **Third, confirm the VPN is genuinely running.** The switch in the Tailscale app
+  and iOS actually having the connection up are two different things. Look at the
+  top of the iPhone screen for a **VPN** badge in the status bar. If it is absent,
+  the connection is not up regardless of what the app shows. Check
+  **Settings → General → VPN & Device Management → VPN**, which should read
+  **Connected**.
+
+  **Fourth, confirm the phone is on the tailnet at all.** On your MacBook:
+
+  ```
+  /Applications/Tailscale.app/Contents/MacOS/Tailscale status
+  ```
+
+  Your phone should appear in that list with a `100.` address of its own. If it
+  does not, sign in to the Tailscale app on the phone again, using the same
+  account as the other devices.
 
 - **`Safari cannot open the page because the server stopped responding`** — check
   the dashboard is running. On the server: `sudo docker compose ps`. The `STATUS`
