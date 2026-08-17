@@ -788,8 +788,12 @@ once to be sure it works.
    window and connect before doing anything else. Then find the cause with:
 
    ```
-   journalctl -xeu ssh.service --no-pager | tail -20
+   sudo journalctl -xeu ssh.service --no-pager | tail -30
    ```
+
+   The `sudo` matters. Without it this prints `-- No entries --` and a note about
+   groups called `adm` and `systemd-journal`, which reads like "there is nothing
+   wrong" but means "you are not allowed to see the system's messages".
 
    `Cannot bind any address` means the address in the file is not one this server
    holds — go back to step 2 and read it from `tailscale0` rather than from your
