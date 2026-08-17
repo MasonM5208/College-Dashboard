@@ -1257,6 +1257,25 @@ Expected:
 
 ### Troubleshooting
 
+- **`DATABASE MIGRATION FAILED` and `Could not open the database`** — the folder
+  holding the database belongs to the wrong user. The dashboard runs as user id
+  1000 inside the container and cannot write to a folder owned by `root`, which is
+  what Section 8 step 4 sets right. Check it:
+
+  ```
+  ls -ld /srv/dashboard/data
+  ```
+
+  If the owner is `root` rather than `mason`, fix it and start again:
+
+  ```
+  sudo chown -R 1000:1000 /srv/dashboard/data
+  ```
+
+  ```
+  sudo docker compose up -d
+  ```
+
 - **`env file /etc/college-dashboard/env not found`** — Section 9 step 8 was not
   completed, or the filename is misspelled. Check with
   `sudo ls -l /etc/college-dashboard/`.

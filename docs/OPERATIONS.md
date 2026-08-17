@@ -238,6 +238,47 @@ To apply migrations by hand, without starting the web server:
 sudo docker compose run --rm app python -m app.migrate
 ```
 
+### `Could not open the database` at startup
+
+The dashboard restarts over and over, and the log says it cannot open
+`/data/dashboard.db`.
+
+`/data` inside the container is the folder `/srv/dashboard/data` on the server.
+The dashboard runs as user id 1000, and that folder has to belong to the same id.
+It usually does not when the folder was created by `sudo` without the ownership
+step afterwards, or when Docker created it for you, because Docker makes it belong
+to `root`.
+
+Check who owns it:
+
+```
+ls -ld /srv/dashboard/data
+```
+
+Expected — `mason mason` in the middle:
+
+```
+drwxr-xr-x 2 mason mason 4096 Aug 17 15:28 /srv/dashboard/data
+```
+
+If it says `root root`, hand it over and start again:
+
+```
+sudo chown -R 1000:1000 /srv/dashboard/data
+```
+
+```
+cd /home/mason/College-Dashboard
+```
+
+```
+sudo docker compose up -d
+```
+
+The number 1000 is used rather than the name `mason` because it is the id the
+dashboard runs as inside the container, and that is what has to match. On a server
+set up by following `SETUP.md`, `mason` is id 1000 — confirm with `id mason`.
+
 ### A job says `stale` or `failing` on the dashboard
 
 `stale` means it has not succeeded recently enough. `failing` means it has failed

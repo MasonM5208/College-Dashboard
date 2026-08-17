@@ -13,6 +13,7 @@ predict, which collides with the explicit transaction control that
 
 from __future__ import annotations
 
+import os
 import sqlite3
 from pathlib import Path
 
@@ -28,13 +29,71 @@ class Fts5Unavailable(RuntimeError):
     """SQLite was built without the FTS5 full-text search extension."""
 
 
+class DatabaseUnavailable(RuntimeError):
+    """The database file could not be opened, most often a permissions problem."""
+
+
+def _unavailable(path: Path, cause: Exception) -> DatabaseUnavailable:
+    """Turn SQLite's opaque open failure into something actionable.
+
+    SQLite reports every open failure as "unable to open database file",
+    regardless of whether the directory is missing, unwritable, or owned by
+    somebody else. Inside a container that message names a path the reader cannot
+    see from the host, so it needs the host-side fix spelled out. SPEC §4 asks
+    for loud failures; a loud failure that does not say what to do is only half
+    of that.
+    """
+    directory = path.parent
+    details = [
+        f"Could not open the database at {path}.",
+        f"SQLite reported: {cause}",
+        "",
+    ]
+
+    if not directory.is_dir():
+        details += [
+            f"The directory {directory} does not exist.",
+            "Inside the container this path comes from the volume line in "
+            "docker-compose.yml, so on the server create it with:",
+            "",
+            "    sudo mkdir -p /srv/dashboard/data",
+            "    sudo chown -R 1000:1000 /srv/dashboard/data",
+        ]
+    else:
+        details += [
+            f"The directory {directory} exists but this process cannot write to "
+            f"it. This process is running as user id {os.getuid()}, and the "
+            f"directory has to be writable by that id. In the container the "
+            f"dashboard always runs as id 1000.",
+            "",
+            "On the server, check what owns it:",
+            "",
+            "    ls -ld /srv/dashboard/data",
+            "",
+            "and hand it over if the owner is root:",
+            "",
+            "    sudo chown -R 1000:1000 /srv/dashboard/data",
+            "    sudo docker compose up -d",
+        ]
+
+    details += ["", "See docs/OPERATIONS.md for more."]
+    return DatabaseUnavailable("\n".join(details))
+
+
 def connect(db_path: Path | str | None = None) -> sqlite3.Connection:
     """Open the database, creating its parent directory if needed."""
     path = Path(db_path) if db_path is not None else config.DB_PATH
     if str(path) != ":memory:":
-        path.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+        except OSError as exc:
+            raise _unavailable(path, exc) from exc
 
-    conn = sqlite3.connect(str(path), isolation_level=None, timeout=10.0)
+    try:
+        conn = sqlite3.connect(str(path), isolation_level=None, timeout=10.0)
+    except sqlite3.OperationalError as exc:
+        raise _unavailable(path, exc) from exc
+
     conn.row_factory = sqlite3.Row
     apply_pragmas(conn)
     return conn

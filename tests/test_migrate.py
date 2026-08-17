@@ -357,6 +357,54 @@ def test_a_trigger_body_is_not_mistaken_for_transaction_control(tmp_path, db_pat
     assert migrate.run(db_path, migrations) == 1
 
 
+def test_unwritable_data_directory_explains_the_fix(tmp_path):
+    """SQLite says only "unable to open database file" for a permissions problem.
+
+    Reproduces the failure seen on the server: the bind-mounted data directory was
+    owned by root, so the container's user could not create the database in it.
+    """
+    data_dir = tmp_path / "data"
+    data_dir.mkdir()
+    data_dir.chmod(0o500)  # readable and enterable, but not writable
+    try:
+        with pytest.raises(db.DatabaseUnavailable) as caught:
+            db.connect(data_dir / "dashboard.db")
+    finally:
+        data_dir.chmod(0o700)
+
+    message = str(caught.value)
+    assert "cannot write to" in message
+    assert "chown -R 1000:1000" in message
+    assert str(data_dir) in message
+
+
+def test_missing_data_directory_explains_the_fix(tmp_path, monkeypatch):
+    """A missing directory needs mkdir, not chown — say the right one."""
+    unwritable = tmp_path / "locked"
+    unwritable.mkdir()
+    unwritable.chmod(0o500)
+    try:
+        with pytest.raises(db.DatabaseUnavailable) as caught:
+            db.connect(unwritable / "missing" / "dashboard.db")
+    finally:
+        unwritable.chmod(0o700)
+
+    assert "does not exist" in str(caught.value)
+    assert "mkdir -p" in str(caught.value)
+
+
+def test_a_failure_to_open_the_database_is_reported_loudly(tmp_path, capsys, monkeypatch):
+    """The banner in the log is how this reaches the reader (SPEC §4)."""
+    data_dir = tmp_path / "data"
+    data_dir.mkdir()
+    data_dir.chmod(0o500)
+    monkeypatch.setattr(migrate.config, "DB_PATH", data_dir / "dashboard.db")
+    try:
+        assert migrate.main() == 1
+    finally:
+        data_dir.chmod(0o700)
+
+
 def test_badly_named_migration_is_refused(tmp_path, db_path):
     migrations = tmp_path / "migrations"
     migrations.mkdir()

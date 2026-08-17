@@ -277,7 +277,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     try:
         run()
-    except (MigrationError, db.Fts5Unavailable) as exc:
+    except (MigrationError, db.Fts5Unavailable, db.DatabaseUnavailable) as exc:
         # One blank line and a banner, because this is the message that appears in
         # `sudo docker compose logs` when the container will not start, and it has
         # to be findable by someone who is not looking for it.
