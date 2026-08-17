@@ -145,7 +145,15 @@ done
 : "${BACKUP_B2_BUCKET:?BACKUP_B2_BUCKET is not set — see docs/SECRETS.md}"
 
 mkdir -p "$BACKUP_DIR"
-chmod 700 "$BACKUP_DIR"
+
+# 711, not 700. The staging directory below belongs to the database's owner rather
+# than to root, and that user has to be able to pass through this directory to
+# reach it — which 700 forbids, since it grants nothing to anyone but root.
+#
+# 711 grants exactly the one thing needed: entering a subdirectory whose name you
+# already know. Listing this directory is still refused, and the archives inside
+# stay mode 600 and root-owned on top of being encrypted.
+chmod 711 "$BACKUP_DIR"
 
 # The staging directory has to be writable by the database's owner, because that
 # is who runs the .backup command.
