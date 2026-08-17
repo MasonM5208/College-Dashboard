@@ -2,4 +2,8 @@
 -r requirements.txt
 
 pytest==9.1.1
+
+# Starlette's TestClient runs on top of this. Running the suite prints one
+# deprecation warning saying to install `httpx2` instead; the tests pass either
+# way, and the pin stays here until that swap has actually been verified.
 httpx==0.28.1

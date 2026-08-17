@@ -1,0 +1,150 @@
+/* Stylesheet for the whole dashboard. Deliberately one small file with no build
+   step and no framework: on a 1 vCPU server maintained by one busy person, a
+   toolchain is a liability. Mobile-first, because the iPhone is the primary
+   client. */
+
+:root {
+  color-scheme: light dark;
+
+  --bg: #f7f6f3;
+  --surface: #ffffff;
+  --border: #e2ded6;
+  --text: #1c1b19;
+  --text-muted: #6b6862;
+  --accent: #2f5d50;
+  --ok-bg: #e6f2ec;
+  --ok-text: #1d5c44;
+  --bad-bg: #fbeae8;
+  --bad-text: #94301f;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #16161a;
+    --surface: #1e1e23;
+    --border: #32323a;
+    --text: #eceae6;
+    --text-muted: #9b978f;
+    --accent: #7fbca9;
+    --ok-bg: #1b2f28;
+    --ok-text: #8fd3b9;
+    --bad-bg: #35201d;
+    --bad-text: #f0a396;
+  }
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: 16px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  -webkit-text-size-adjust: 100%;
+}
+
+/* env(safe-area-inset-*) keeps content clear of the iPhone's rounded corners and
+   home indicator once the page is installed to the home screen. */
+.page {
+  max-width: 44rem;
+  margin: 0 auto;
+  padding: calc(1.5rem + env(safe-area-inset-top)) 1.25rem
+           calc(2rem + env(safe-area-inset-bottom));
+}
+
+.page-head { margin-bottom: 1.5rem; }
+
+h1 {
+  font-size: 1.5rem;
+  letter-spacing: -0.01em;
+  margin: 0 0 0.25rem;
+}
+
+h2 {
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--text-muted);
+  margin: 2rem 0 0.75rem;
+}
+
+p { margin: 0 0 0.75rem; }
+
+.muted { color: var(--text-muted); font-size: 0.92rem; }
+
+.banner {
+  border-radius: 0.6rem;
+  padding: 0.85rem 1rem;
+  font-size: 0.95rem;
+  border: 1px solid transparent;
+}
+
+.banner-ok  { background: var(--ok-bg);  color: var(--ok-text);  border-color: var(--ok-text); }
+.banner-bad { background: var(--bad-bg); color: var(--bad-text); border-color: var(--bad-text); }
+
+.checks, .sources { list-style: none; margin: 0; padding: 0; }
+
+.checks li, .source {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 0.6rem;
+  padding: 0.85rem 1rem;
+  margin-bottom: 0.6rem;
+}
+
+.checks li {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.2rem 0.7rem;
+  align-items: baseline;
+}
+
+.checks .pill { grid-row: span 2; }
+.checks .muted { grid-column: 2; }
+
+.source-head {
+  display: flex;
+  align-items: baseline;
+  gap: 0.7rem;
+  margin-bottom: 0.2rem;
+}
+
+.check-name { font-weight: 600; }
+
+.pill {
+  display: inline-block;
+  min-width: 3.1rem;
+  text-align: center;
+  padding: 0.1rem 0.45rem;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.pill-ok  { background: var(--ok-bg);  color: var(--ok-text); }
+.pill-bad { background: var(--bad-bg); color: var(--bad-text); }
+
+/* Error text from a failed job is shown verbatim rather than summarised: a
+   paraphrased error cannot be searched for. */
+.error-text {
+  margin-top: 0.5rem;
+  padding: 0.5rem 0.65rem;
+  background: var(--bad-bg);
+  color: var(--bad-text);
+  border-radius: 0.4rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.8rem;
+  overflow-x: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.page-foot {
+  margin-top: 2.5rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--border);
+}
+
+.page-foot .muted { font-size: 0.8rem; }

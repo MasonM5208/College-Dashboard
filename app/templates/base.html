@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <!-- viewport-fit=cover lets the page reach under the iPhone's rounded corners
+       and home indicator; the CSS uses safe-area insets to keep text clear of them. -->
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>{% block title %}Semester Dashboard{% endblock %}</title>
+
+  <!-- Colours the iPhone status bar to match the page in each appearance mode. -->
+  <meta name="theme-color" content="#f7f6f3" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#16161a" media="(prefers-color-scheme: dark)">
+
+  <link rel="manifest" href="/static/manifest.webmanifest">
+  <link rel="stylesheet" href="/static/app.css">
+
+  <!-- Required for the page to open without Safari's address bar once it has been
+       added to the iPhone home screen. Both spellings are present because iOS
+       still reads the apple- prefixed one. -->
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="Semester">
+  <link rel="apple-touch-icon" href="/static/icons/icon-180.png">
+  <link rel="icon" href="/static/icons/icon-192.png" sizes="192x192" type="image/png">
+</head>
+<body>
+  <div class="page">
+    <header class="page-head">
+      <h1>{% block heading %}Semester Dashboard{% endblock %}</h1>
+      {% block subheading %}{% endblock %}
+    </header>
+
+    {% block content %}{% endblock %}
+
+    <footer class="page-foot">
+      {% block footer %}{% endblock %}
+    </footer>
+  </div>
+
+  <script>
+    // Registers the service worker, which is what makes the page installable to
+    // the iPhone home screen. It deliberately caches nothing — see app/static/sw.js.
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', function () {
+        navigator.serviceWorker.register('/sw.js').catch(function (err) {
+          console.warn('Service worker registration failed:', err);
+        });
+      });
+    }
+  </script>
+</body>
+</html>

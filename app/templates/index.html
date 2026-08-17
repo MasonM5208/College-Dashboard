@@ -1,0 +1,108 @@
+{% extends "base.html" %}
+
+{% block title %}Semester Dashboard — status{% endblock %}
+{% block heading %}Semester Dashboard{% endblock %}
+
+{% block subheading %}
+  <p class="muted">Foundation is running. {{ now_display }}</p>
+{% endblock %}
+
+{% block content %}
+
+  {% if facts.ok %}
+    <div class="banner banner-ok">
+      <strong>Everything checks out.</strong>
+      The database is reachable, in the right mode, and up to date.
+    </div>
+  {% else %}
+    <div class="banner banner-bad">
+      <strong>Something needs attention.</strong>
+      One of the checks below failed. docs/OPERATIONS.md explains what to do for each.
+    </div>
+  {% endif %}
+
+  <section>
+    <h2>Checks</h2>
+    <ul class="checks">
+      <li>
+        <span class="pill {{ 'pill-ok' if facts.checks.journal_mode_wal else 'pill-bad' }}">
+          {{ 'pass' if facts.checks.journal_mode_wal else 'fail' }}
+        </span>
+        <span class="check-name">Write-ahead logging</span>
+        <span class="muted">Lets the nightly backup run safely while the site is in use.</span>
+      </li>
+      <li>
+        <span class="pill {{ 'pill-ok' if facts.checks.fts5 else 'pill-bad' }}">
+          {{ 'pass' if facts.checks.fts5 else 'fail' }}
+        </span>
+        <span class="check-name">Full-text search (FTS5)</span>
+        <span class="muted">What the saved-messages archive will search with.</span>
+      </li>
+      <li>
+        <span class="pill {{ 'pill-ok' if facts.checks.migrations_up_to_date else 'pill-bad' }}">
+          {{ 'pass' if facts.checks.migrations_up_to_date else 'fail' }}
+        </span>
+        <span class="check-name">Database structure up to date</span>
+        <span class="muted">
+          Version {{ '%04d' % facts.schema_version }}.
+          {%- if facts.pending_migrations %}
+            Not yet applied: {{ facts.pending_migrations | join(', ') }}.
+          {%- endif %}
+        </span>
+      </li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>Automatic jobs</h2>
+    {% if facts.sync_sources %}
+      <ul class="sources">
+        {% for source in facts.sync_sources %}
+          <li class="source source-{{ source.level }}">
+            <div class="source-head">
+              <span class="pill pill-{{ 'ok' if source.level == 'ok' else 'bad' }}">
+                {{ source.level }}
+              </span>
+              <span class="check-name">{{ source.label }}</span>
+            </div>
+            <div class="muted">
+              Last succeeded {{ source.age_display }} ({{ source.last_success_display }}).
+              {%- if source.consecutive_failures %}
+                {{ source.consecutive_failures }} failure(s) in a row since then.
+              {%- endif %}
+            </div>
+            {% if source.last_error %}
+              <div class="error-text">{{ source.last_error }}</div>
+            {% endif %}
+          </li>
+        {% endfor %}
+      </ul>
+    {% else %}
+      <p class="muted">
+        Nothing runs on a schedule yet. The nightly backup appears here after it has
+        run once, and the Canvas calendar feed appears here in the next milestone.
+      </p>
+    {% endif %}
+  </section>
+
+  <section>
+    <h2>What is not built yet</h2>
+    <p class="muted">
+      This milestone builds the foundation only: the server, the private network, the
+      database, and backups. Coming next, in order — assignments arriving from Canvas
+      automatically, then the daily view that ranks them, then reminders on your phone.
+    </p>
+  </section>
+
+{% endblock %}
+
+{% block footer %}
+  <p class="muted">
+    Database {{ facts.database_path }}
+    {%- if facts.database_bytes is not none %}
+      · {{ (facts.database_bytes / 1024) | round(1) }} KB
+    {%- endif %}
+    · times shown in {{ facts.timezone }}
+    · running since {{ started_display }}
+  </p>
+{% endblock %}

@@ -152,6 +152,21 @@ def current_version(conn: sqlite3.Connection) -> int:
     return int(row["v"]) if row and row["v"] is not None else 0
 
 
+def pending(
+    conn: sqlite3.Connection, migrations_dir: Path | None = None
+) -> list[Migration]:
+    """Migrations that exist on disk but have not been applied to this database.
+
+    Read-only: unlike ``run``, this creates nothing. A database with no tracking
+    table at all reports every migration as pending.
+    """
+    try:
+        applied = applied_rows(conn)
+    except sqlite3.OperationalError:
+        applied = {}
+    return [m for m in discover(migrations_dir) if m.version not in applied]
+
+
 def _check_history(migrations: list[Migration], applied: dict[int, sqlite3.Row]) -> None:
     """Refuse to continue if the files on disk disagree with what was applied."""
     by_version = {m.version: m for m in migrations}
