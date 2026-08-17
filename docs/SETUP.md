@@ -103,11 +103,59 @@ that.
    | Plan / size | The cheapest with at least **1 GB** of memory (about $5–6 a month) |
    | Auto backups | Off — this project makes its own, and Vultr's cost extra |
    | IPv6 | On is fine |
-   | SSH keys | Skip this. You will use a password. |
+   | SSH keys | **Add one — see the box below.** Do not skip this. |
    | Hostname | `dashboard` |
 
    Debian 12 matters: the instructions below are written for it. A different
    operating system will not match.
+
+   #### Adding your SSH key — do not skip this
+
+   An SSH key is a pair of files on your Mac that proves who you are without a
+   password. Setting one up here takes two minutes and removes password typing
+   from the rest of this guide.
+
+   It is worth the two minutes for a specific reason. The password Vultr generates
+   for a new server contains symbols, and both the browser console and some
+   copy-paste paths deliver those symbols incorrectly — so you can type the
+   correct password repeatedly and be refused every time, with no way to tell why.
+   A key sidesteps that completely.
+
+   First, check whether you already have a key. On your **MacBook**:
+
+   ```
+   ls ~/.ssh/id_ed25519.pub
+   ```
+
+   If it prints the filename, you have one. If it prints
+   `No such file or directory`, create one — press `Return` at each question to
+   accept the defaults, and leave the passphrase empty:
+
+   ```
+   ssh-keygen -t ed25519 -C "macbook"
+   ```
+
+   Expected, at the end:
+
+   ```
+   Your public key has been saved in /Users/you/.ssh/id_ed25519.pub
+   The key fingerprint is:
+   SHA256:9Xk2pQ7rL4mN8vB1cD6wF3jH5tY0aS2eR7uI4oP9gK8 macbook
+   ```
+
+   Copy it to your clipboard:
+
+   ```
+   pbcopy < ~/.ssh/id_ed25519.pub
+   ```
+
+   This prints nothing. Now, in the Vultr deployment page's **SSH Keys** section,
+   click **Add New**, paste with `Command` and `V` together, name it `macbook`,
+   and save. **Make sure its checkbox is ticked** before you deploy — an added but
+   unticked key is not installed on the server.
+
+   You will still record the root password in step 5, as a fallback for the
+   browser console.
 
 4. Click **Deploy Now**. The server takes two or three minutes to build. Its
    status will read *Installing*, then *Running*.
@@ -173,16 +221,22 @@ the only way to set it up.
    This is your Mac saying it has not seen this server before. Type `yes` and
    press `Return`.
 
-3. You will be asked for a password:
+3. Because you added an SSH key in Section 1, you should **not** be asked for a
+   password at all. Go straight to step 4.
+
+   If you are asked for one:
 
    ```
    root@149.28.44.19's password:
    ```
 
-   Paste the root password from Section 1 and press `Return`.
+   that means the key was not installed — most often because it was added on the
+   Vultr page but its checkbox was left unticked at deploy time. Paste the root
+   password from Section 1 to get in for now, and see the troubleshooting note
+   below about installing the key afterwards.
 
-   **Nothing appears as you type or paste.** No dots, no stars, no movement. That
-   is deliberate, not a fault. Paste it once and press `Return`.
+   **Nothing appears as you type or paste a password.** No dots, no stars, no
+   movement. That is deliberate, not a fault. Paste it once and press `Return`.
 
 4. When it works you will see a welcome message ending with a line like:
 
@@ -198,6 +252,28 @@ the only way to set it up.
 - **`Permission denied, please try again.`** — the password was wrong, or an extra
   space came with it when pasted. Copy it again from the Vultr page. Three wrong
   attempts closes the connection; run the `ssh` command again to retry.
+
+  **If it keeps refusing a password you are certain is right**, do not keep
+  retrying, and do not assume the browser console will do better — the console is
+  the *more* likely of the two to mangle it. Vultr's generated passwords contain
+  symbols, and both paths can deliver those symbols incorrectly, which looks
+  identical to typing the wrong password.
+
+  The reliable fix is to stop using that password. On the server's page at
+  `my.vultr.com`, find the **Settings** tab and the section for changing the root
+  password, and set one made of **letters and digits only**, at least 16
+  characters. Vultr reboots the server to apply it, which takes two or three
+  minutes. Then install your SSH key so this cannot recur — from your **MacBook**:
+
+  ```
+  ssh-copy-id root@149.28.44.19
+  ```
+
+  It asks for that new password once, then never again.
+
+- **You were asked for a password even though you added an SSH key** — the key was
+  added to your Vultr account but its checkbox was not ticked on the deployment
+  page, so it was never installed. Fix it with the `ssh-copy-id` command above.
 
 - **`ssh: connect to host ... port 22: Operation timed out`** — the server is not
   finished starting, or the IP address has a typo. Wait two minutes and try again.
@@ -268,7 +344,25 @@ question rather than into damage.
 
    This command prints nothing at all when it works. Silence means success.
 
-3. Switch to the new account:
+3. Give the new account the same SSH key, so you can connect as `mason` without a
+   password the way you can as `root`. Run both of these while still logged in as
+   `root`:
+
+   ```
+   mkdir -p /home/mason/.ssh && cp /root/.ssh/authorized_keys /home/mason/.ssh/
+   ```
+
+   ```
+   chown -R mason:mason /home/mason/.ssh && chmod 700 /home/mason/.ssh && chmod 600 /home/mason/.ssh/authorized_keys
+   ```
+
+   Neither prints anything when it works.
+
+   You will still be asked for the `mason` password by `sudo`, which is a separate
+   thing: the key proves who you are when connecting, and `sudo` re-checks that
+   you are still at the keyboard before doing something administrative.
+
+4. Switch to the new account:
 
    ```
    su - mason
@@ -282,7 +376,7 @@ question rather than into damage.
 
    The `$` on the end instead of `#` means you are no longer root.
 
-4. Check that administrative permission works. `sudo` means "do this one thing as
+5. Check that administrative permission works. `sudo` means "do this one thing as
    the administrator". It will ask for the password you created a moment ago.
 
    ```
