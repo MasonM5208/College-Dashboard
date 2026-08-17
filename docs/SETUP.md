@@ -710,8 +710,29 @@ once to be sure it works.
    ssh mason@100.92.147.61
    ```
 
-2. Tell SSH to listen only on the private address. This writes a small
-   configuration file, replacing the address with yours:
+2. Get the address from the server itself, rather than from your notes. It must be
+   **this server's** tailnet address — your MacBook and iPhone have their own
+   `100.` addresses too, and using one of those stops SSH from starting at all.
+
+   ```
+   ip -4 addr show tailscale0
+   ```
+
+   Expected — the address you want is the one after `inet`, before the `/`:
+
+   ```
+   4: tailscale0: <POINTOPOINT,MULTICAST,NOARP,UP,LOWER_UP> mtu 1280 qdisc fq_codel state UNKNOWN group default qlen 500
+       inet 100.92.147.61/32 scope global tailscale0
+          valid_lft forever preferred_lft forever
+   ```
+
+   **If this prints `Device "tailscale0" does not exist`**, Tailscale is not
+   running on the server, and the address does not exist for SSH to listen on.
+   Stop here and run `sudo tailscale up`, finishing the browser sign-in, before
+   going any further with this section.
+
+3. Tell SSH to listen only on that private address. This writes a small
+   configuration file, using the address you saw above:
 
    ```
    echo "ListenAddress 100.92.147.61" | sudo tee /etc/ssh/sshd_config.d/tailscale-only.conf
@@ -723,8 +744,7 @@ once to be sure it works.
    ListenAddress 100.92.147.61
    ```
 
-3. Check the configuration is valid **before** applying it. This is the step that
-   prevents a mistake from locking you out:
+4. Check the configuration is valid before applying it:
 
    ```
    sudo sshd -t
@@ -734,14 +754,46 @@ once to be sure it works.
    not continue — run `sudo rm /etc/ssh/sshd_config.d/tailscale-only.conf` to undo
    the change, and check the address for typos.
 
-4. Apply it:
+   Be aware of what this does **not** check. It reads the file for spelling
+   mistakes, but it does not test whether the address can actually be used. An
+   address that is correctly written but belongs to a different machine passes
+   this check and then fails in the next step. Step 2 is what guards against that.
+
+5. Apply it. **Keep this window open afterwards, whatever happens.**
 
    ```
    sudo systemctl restart ssh
    ```
 
-   Your existing connection stays open. New connections now have to come over
-   Tailscale.
+   Nothing is printed when it works. Your existing connection stays open either
+   way, and new connections now have to come over Tailscale.
+
+   **If it prints `Job for ssh.service failed`**, the new setting stopped SSH from
+   starting, and no new connection can be made until it is fixed. Your current
+   window still works, so use it — undo the change and put SSH back:
+
+   ```
+   sudo rm /etc/ssh/sshd_config.d/tailscale-only.conf
+   ```
+
+   ```
+   sudo systemctl restart ssh
+   ```
+
+   ```
+   sudo systemctl status ssh --no-pager
+   ```
+
+   You want `Active: active (running)`. Confirm you can open a *second* Terminal
+   window and connect before doing anything else. Then find the cause with:
+
+   ```
+   journalctl -xeu ssh.service --no-pager | tail -20
+   ```
+
+   `Cannot bind any address` means the address in the file is not one this server
+   holds — go back to step 2 and read it from `tailscale0` rather than from your
+   notes.
 
 ### Check before continuing
 
