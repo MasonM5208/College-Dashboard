@@ -2,6 +2,9 @@
 
 Read by Claude Code at the start of every session in this repo. Keep this short — anything long belongs in SPEC.md or docs/, not here.
 
+## Deployment
+Never SSH into the VPS or run commands there directly. Write out the exact commands and let Mason run them himself.
+
 ## Project
 
 Personal academic dashboard for Mason: Canvas ICS ingest, CalDAV reminder ladders, a verbatim message archive, and a Claude-powered chat layer. Single user, forever.
