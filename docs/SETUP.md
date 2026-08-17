@@ -876,10 +876,38 @@ not the server — read each step's heading carefully.
    > would have to create another key. Copy both values now and record them as
    > **item 6**.
 
-8. **On the server** — connect again with `ssh mason@100.92.147.61` — create the
-   file that holds these secrets. It is placed outside the code folder, and only
-   the administrator account can read it, so it can never be uploaded to GitHub by
-   accident.
+8. **Back on the server.** Steps 1 to 4 happened on your MacBook and steps 5 to 7
+   happened in a web browser, so the remaining steps need you to connect to the
+   server again:
+
+   ```
+   ssh mason@100.92.147.61
+   ```
+
+   **Check you are in the right place before typing anything secret:**
+
+   ```
+   hostname
+   ```
+
+   Expected:
+
+   ```
+   dashboard
+   ```
+
+   If it prints your Mac's name instead — something ending in `.local` — you are
+   still on the laptop. Run the `ssh` command above and check again.
+
+   This matters more than it looks. Every command below works on a Mac too, so
+   there is no error to warn you; the settings would be written to the laptop and
+   the server would have nothing. The giveaway comes later, at the end of step 9:
+   on a Mac, `chown root:root` fails with `chown: root: illegal group name`,
+   because macOS calls that group `wheel`.
+
+   Now create the file that holds the secrets. It is placed outside the code
+   folder, and only the administrator account can read it, so it can never be
+   uploaded to GitHub by accident.
 
    This is the first command in a while that begins with `sudo`, so it will ask:
 
