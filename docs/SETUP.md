@@ -881,6 +881,23 @@ not the server — read each step's heading carefully.
    the administrator account can read it, so it can never be uploaded to GitHub by
    accident.
 
+   This is the first command in a while that begins with `sudo`, so it will ask:
+
+   ```
+   [sudo] password for mason:
+   ```
+
+   That is asking for **your `mason` account password from Section 3** — item 3 on
+   your list. It is not the server's root password from Vultr, and not your Mac's
+   password. `sudo` means "do this one thing as the administrator", so it is
+   checking that you are the person at the keyboard, using your own password.
+
+   Nothing appears as you type it. It will not ask again for about fifteen minutes,
+   so the remaining commands in this section should not prompt you.
+
+   If you have forgotten that password, see "The `mason` account password" in
+   `docs/SECRETS.md` for how to set a new one using Vultr's browser console.
+
    ```
    sudo mkdir -p /etc/college-dashboard
    ```
