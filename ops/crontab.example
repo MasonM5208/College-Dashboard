@@ -1,0 +1,28 @@
+# Scheduled jobs for the Semester Dashboard.
+#
+# These go in ROOT's crontab, not Mason's. Install them with:
+#
+#   sudo crontab -e
+#
+# and paste the lines below the comments. docs/SETUP.md walks through this.
+#
+# WHY ROOT: the backup needs the encryption key and the Backblaze credentials,
+# which live in a file only root can read (/etc/college-dashboard/env, mode 600,
+# per SPEC §11). The script drops back to the database's own user before touching
+# the database, so it never leaves root-owned files where the container writes.
+#
+# WHY CRON AND NOT THE APP: the backup has to keep running when the container is
+# broken, which is exactly when last night's copy matters. Canvas polling, which
+# only makes sense when the app is up, runs inside the app instead (M1).
+
+
+# Nightly backup at 03:15 server time. Takes an online copy of the database,
+# verifies it, encrypts it, copies it to Backblaze B2, and prunes old copies.
+# Its outcome appears on the dashboard's status page either way.
+15 3 * * * /home/mason/College-Dashboard/ops/backup.sh >> /var/log/dashboard-backup.log 2>&1
+
+
+# Optional: keep the backup log from growing without limit. Trims it to its last
+# 2000 lines on the first of each month. The log gains only a few lines a day, so
+# this is tidiness rather than a real disk concern.
+0 4 1 * * tail -n 2000 /var/log/dashboard-backup.log > /var/log/dashboard-backup.log.tmp && mv /var/log/dashboard-backup.log.tmp /var/log/dashboard-backup.log
