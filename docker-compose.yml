@@ -1,0 +1,80 @@
+# How the dashboard runs on the VPS.
+#
+# Always invoke this with sudo:
+#
+#   sudo docker compose up -d
+#
+# The secrets file below is owned by root with permissions 600, so a non-root
+# Compose cannot read it. Forgetting sudo produces a permission-denied error on
+# that path — docs/OPERATIONS.md quotes it.
+
+name: college-dashboard
+
+services:
+  app:
+    build: .
+    image: college-dashboard:local
+    container_name: dashboard
+    restart: unless-stopped
+
+    # THE SECURITY BOUNDARY OF THE ENTIRE PROJECT (SPEC §3).
+    #
+    # Naming the address before the colon means the port is opened ONLY on the
+    # Tailscale interface. Nothing on the public internet can reach it, which is
+    # what removes the need for certificates, a reverse proxy, and a firewall.
+    #
+    # Never change this to "8000:8000". That form listens on every interface,
+    # including the VPS's public address.
+    #
+    # TAILNET_BIND_IP comes from the .env file beside this one — Compose reads that
+    # file for ${...} substitution. It cannot come from the secrets file below:
+    # env_file values are passed into the container but are not available for
+    # substitution out here. See .env.example.
+    ports:
+      - "${TAILNET_BIND_IP:?set TAILNET_BIND_IP in .env — run 'tailscale ip -4' on this server to find it}:8000:8000"
+
+    # Real secrets, root-owned and outside the repository (SPEC §11). Passed into
+    # the container as environment variables.
+    env_file:
+      - /etc/college-dashboard/env
+
+    environment:
+      TZ: "${TZ:-America/Indiana/Indianapolis}"
+      DB_PATH: /data/dashboard.db
+      PYTHONUNBUFFERED: "1"
+
+    # The database on the host disk. This directory is the only thing here that
+    # cannot be rebuilt, and it is what the nightly backup reads.
+    volumes:
+      - /srv/dashboard/data:/data
+
+    # 1 vCPU and as little as 1GB of RAM (CLAUDE.md). The cap means a runaway
+    # process gets killed by itself rather than taking the whole server, and
+    # Tailscale, with it, out of reach.
+    mem_limit: 512m
+    memswap_limit: 512m
+
+    # python:slim ships no curl or wget, so the health check uses the interpreter
+    # that is already in the image. A failing check shows up as "unhealthy" in
+    # `sudo docker compose ps`.
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - |
+          import sys, urllib.request
+          with urllib.request.urlopen("http://127.0.0.1:8000/healthz", timeout=5) as r:
+              sys.exit(0 if r.status == 200 else 1)
+      interval: 60s
+      timeout: 10s
+      start_period: 30s
+      retries: 3
+
+    # The disk is 40GB and logs are otherwise unbounded. Three 10MB files is
+    # several weeks of history here, and it cannot fill the disk.
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
