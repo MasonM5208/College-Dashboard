@@ -98,6 +98,32 @@ def sync_sources(conn: sqlite3.Connection, now: datetime | None = None) -> list[
     return sources
 
 
+def ingest_summary(conn: sqlite3.Connection) -> dict:
+    """Counts behind the banners that ask Mason to do something.
+
+    Each of these is a state SPEC §6 requires be surfaced rather than resolved
+    silently: a course the feed named but cannot label, an event whose course could
+    not be identified, and an assignment the feed stopped mentioning.
+    """
+    one = lambda sql: int(conn.execute(sql).fetchone()[0])  # noqa: E731
+
+    return {
+        "assignments": one("SELECT COUNT(*) FROM assignments"),
+        "from_canvas": one("SELECT COUNT(*) FROM assignments WHERE source = 'ics'"),
+        "courses": one("SELECT COUNT(*) FROM courses"),
+        "courses_needing_name": one(
+            "SELECT COUNT(*) FROM courses WHERE needs_naming = 1"
+        ),
+        "needs_course": one(
+            "SELECT COUNT(*) FROM assignments WHERE course_id IS NULL"
+        ),
+        "vanished": one(
+            "SELECT COUNT(*) FROM assignments WHERE feed_missing_since IS NOT NULL"
+        ),
+        "canvas_configured": config.canvas_configured(),
+    }
+
+
 def collect(conn: sqlite3.Connection, now: datetime | None = None) -> dict:
     """Everything the status page and /healthz report."""
     now = now or datetime.now(timezone.utc)
@@ -118,6 +144,7 @@ def collect(conn: sqlite3.Connection, now: datetime | None = None) -> dict:
     return {
         "ok": all(checks.values()),
         "checks": checks,
+        "ingest": ingest_summary(conn),
         "schema_version": migrate.current_version(conn),
         "pending_migrations": outstanding,
         "database_path": str(config.DB_PATH),

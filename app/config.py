@@ -32,6 +32,15 @@ class MissingSetting(RuntimeError):
     """A required environment variable is absent or empty."""
 
 
+def canvas_configured() -> bool:
+    """Whether the Canvas feed address has been set.
+
+    Used to decide whether to start polling at all, so that a dashboard without a
+    feed address logs one clear line rather than failing every 30 minutes.
+    """
+    return bool(os.environ.get("CANVAS_ICS_URL", "").strip())
+
+
 def require(name: str) -> str:
     """Return the value of a required environment variable.
 

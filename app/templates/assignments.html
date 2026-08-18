@@ -1,0 +1,104 @@
+{% extends "base.html" %}
+
+{% block title %}Assignments — Semester Dashboard{% endblock %}
+{% block heading %}Assignments{% endblock %}
+
+{% block subheading %}
+  <p class="muted">
+    {{ total }} item{{ '' if total == 1 else 's' }} from Canvas, ordered by when they
+    are due. <a href="/">Status</a>
+  </p>
+{% endblock %}
+
+{% block content %}
+
+  {% if facts.ingest.courses_needing_name %}
+    <div class="banner banner-bad">
+      <strong>{{ facts.ingest.courses_needing_name }} course{{ '' if facts.ingest.courses_needing_name == 1 else 's' }} still named after a code.</strong>
+      Canvas gives no readable course name, only an enrolment code, so that code is
+      standing in until you replace it. Renaming arrives with the next milestone.
+    </div>
+  {% endif %}
+
+  {% if facts.ingest.needs_course %}
+    <div class="banner banner-bad">
+      <strong>{{ facts.ingest.needs_course }} item{{ '' if facts.ingest.needs_course == 1 else 's' }} could not be matched to a course.</strong>
+      Canvas did not put a course code in the title. They are kept below rather than
+      discarded.
+    </div>
+  {% endif %}
+
+  {% if facts.ingest.vanished %}
+    <div class="banner banner-bad">
+      <strong>{{ facts.ingest.vanished }} item{{ '' if facts.ingest.vanished == 1 else 's' }} disappeared from the feed.</strong>
+      That usually means the assignment was deleted or unpublished in Canvas, but a
+      temporary fault looks identical, so nothing has been removed here.
+    </div>
+  {% endif %}
+
+  {% if not groups %}
+    <div class="banner banner-ok">
+      <strong>Nothing has arrived yet.</strong>
+      {% if not facts.ingest.canvas_configured %}
+        The Canvas feed address has not been set on the server, so nothing is being
+        collected.
+      {% else %}
+        The next check runs within 30 minutes, or use the button below.
+      {% endif %}
+    </div>
+  {% endif %}
+
+  {% for group in groups %}
+    <section>
+      <h2>
+        {{ group.name }}
+        {%- if group.code %} <span class="muted">· {{ group.code }}</span>{% endif %}
+        {%- if group.needs_naming %} <span class="pill pill-bad">needs a name</span>{% endif %}
+        {%- if group.unmatched %} <span class="pill pill-bad">needs a course</span>{% endif %}
+      </h2>
+
+      <ul class="sources">
+        {% for item in group['items'] %}
+          <li class="source">
+            <div class="source-head">
+              <span class="check-name">{{ item.title }}</span>
+              {% if item.type != 'other' %}<span class="pill pill-ok">{{ item.type }}</span>{% endif %}
+            </div>
+            <div class="muted">
+              Due {{ item.due_display }}
+              {%- if item.est_hours_remaining is none %} · no time estimate yet{% endif %}
+              {%- if item.status != 'not_started' %} · {{ item.status.replace('_', ' ') }}{% endif %}
+            </div>
+            {% if item.missing_since %}
+              <div class="error-text">Gone from the Canvas feed since {{ item.missing_display }}. Kept here until you confirm.</div>
+            {% endif %}
+          </li>
+        {% endfor %}
+      </ul>
+    </section>
+  {% endfor %}
+
+  <section>
+    <h2>Checking for changes</h2>
+    <p class="muted">
+      Canvas is checked every 30 minutes. Canvas caches the feed on its own servers,
+      so a change you make there can take up to an hour to appear here — treat
+      anything due in the next two hours as needing a look at Canvas itself.
+    </p>
+    <form method="post" action="/sync/canvas">
+      <button type="submit">Check Canvas now</button>
+    </form>
+  </section>
+
+  <section>
+    <h2>What this list cannot show</h2>
+    <p class="muted">
+      Only work that has a due date in Canvas appears here. Anything a professor
+      assigns in class, on a paper syllabus, or without setting a Canvas due date is
+      invisible to this feed, and courses that do not use Canvas this way will not
+      appear at all. This list is a floor, not a full picture. Entering things by
+      hand arrives with the next milestone.
+    </p>
+  </section>
+
+{% endblock %}

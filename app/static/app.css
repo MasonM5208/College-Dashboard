@@ -148,3 +148,22 @@ p { margin: 0 0 0.75rem; }
 }
 
 .page-foot .muted { font-size: 0.8rem; }
+
+/* Actions. There is exactly one button in M1 — "Check Canvas now" — and more
+   arrive with the Today view, so this is deliberately generic. */
+button {
+  font: inherit;
+  font-weight: 600;
+  color: var(--surface);
+  background: var(--accent);
+  border: none;
+  border-radius: 0.5rem;
+  padding: 0.6rem 1.1rem;
+  cursor: pointer;
+  /* 44px is Apple's minimum comfortable tap target; this page is used on a phone. */
+  min-height: 44px;
+}
+
+button:active { opacity: 0.85; }
+
+a { color: var(--accent); }

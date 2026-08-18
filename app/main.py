@@ -19,11 +19,11 @@ from datetime import datetime, timezone
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from fastapi import FastAPI, Request
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
-from app import config, db, migrate, status
+from app import canvas, config, db, migrate, scheduler, status
 
 log = logging.getLogger("dashboard")
 
@@ -101,7 +101,12 @@ async def lifespan(app: FastAPI):
         app.state.schema_version,
         config.DB_PATH,
     )
-    yield
+
+    app.state.tasks = scheduler.start(app)
+    try:
+        yield
+    finally:
+        await scheduler.stop(app.state.tasks)
 
 
 app = FastAPI(
@@ -142,6 +147,89 @@ def index(request: Request):
             ),
         },
     )
+
+
+@app.get("/assignments")
+def assignments(request: Request):
+    """Everything ingested, grouped by course.
+
+    Deliberately a plain list ordered by due date. The Today view — which ranks by
+    slack rather than by deadline, per SPEC §9 — is M2. This page exists to prove
+    the feed is arriving and to show what needs attention.
+    """
+    conn = db.connect()
+    try:
+        facts = status.collect(conn)
+        rows = conn.execute(
+            """
+            SELECT a.id, a.title, a.type, a.due_at, a.status, a.source,
+                   a.feed_missing_since, a.est_hours_remaining,
+                   c.id AS course_id, c.name AS course_name,
+                   c.code AS course_code, c.needs_naming
+            FROM assignments a
+            LEFT JOIN courses c ON c.id = a.course_id
+            ORDER BY (a.due_at IS NULL), a.due_at, a.title
+            """
+        ).fetchall()
+    finally:
+        conn.close()
+
+    zone = request.app.state.zone
+    groups: dict[object, dict] = {}
+    for row in rows:
+        key = row["course_id"]
+        group = groups.setdefault(
+            key,
+            {
+                "course_id": key,
+                "name": row["course_name"] or "Not yet matched to a course",
+                "code": row["course_code"],
+                "needs_naming": bool(row["needs_naming"]),
+                "unmatched": key is None,
+                "items": [],
+            },
+        )
+        group["items"].append(
+            {
+                "title": row["title"],
+                "type": row["type"],
+                "status": row["status"],
+                "source": row["source"],
+                "due_display": local_time(row["due_at"], zone),
+                "due_at": row["due_at"],
+                "missing_since": row["feed_missing_since"],
+                "missing_display": local_time(row["feed_missing_since"], zone),
+                "est_hours_remaining": row["est_hours_remaining"],
+            }
+        )
+
+    # Unmatched items first, since they are the group that needs Mason.
+    ordered = sorted(groups.values(), key=lambda g: (not g["unmatched"], g["name"]))
+
+    return templates.TemplateResponse(
+        request=request,
+        name="assignments.html",
+        context={"facts": facts, "groups": ordered, "total": len(rows)},
+    )
+
+
+@app.post("/sync/canvas")
+def sync_canvas():
+    """Poll Canvas now rather than waiting for the next scheduled run.
+
+    Needed to test a due-date change inside one poll cycle without waiting half an
+    hour, and useful whenever the feed looks stale.
+    """
+    conn = db.connect()
+    try:
+        canvas.sync(conn)
+    except canvas.FeedError:
+        # sync() has already recorded this in sync_state, and the status page
+        # renders it. Redirecting keeps the browser on a real page either way.
+        pass
+    finally:
+        conn.close()
+    return RedirectResponse("/assignments", status_code=303)
 
 
 @app.get("/healthz")

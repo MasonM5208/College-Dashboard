@@ -86,11 +86,57 @@
   </section>
 
   <section>
+    <h2>Assignments</h2>
+
+    {# Whether anything has been collected and whether collection is still switched
+       on are separate facts. Showing them separately means a feed address that
+       later goes missing surfaces as a warning beside the data it has stopped
+       updating, rather than hiding that data. #}
+    {% if facts.ingest.assignments or facts.ingest.canvas_configured %}
+      <p class="muted">
+        {{ facts.ingest.assignments }} tracked across
+        {{ facts.ingest.courses }} course{{ '' if facts.ingest.courses == 1 else 's' }},
+        {{ facts.ingest.from_canvas }} of them from Canvas.
+        <a href="/assignments">See them all</a>.
+      </p>
+      {% if facts.ingest.needs_course or facts.ingest.courses_needing_name or facts.ingest.vanished %}
+        <ul class="checks">
+          {% if facts.ingest.courses_needing_name %}
+            <li><span class="pill pill-bad">todo</span>
+              <span class="check-name">{{ facts.ingest.courses_needing_name }} course(s) named after a code</span>
+              <span class="muted">Canvas supplies no readable name.</span></li>
+          {% endif %}
+          {% if facts.ingest.needs_course %}
+            <li><span class="pill pill-bad">todo</span>
+              <span class="check-name">{{ facts.ingest.needs_course }} item(s) with no course</span>
+              <span class="muted">Kept for review rather than discarded.</span></li>
+          {% endif %}
+          {% if facts.ingest.vanished %}
+            <li><span class="pill pill-bad">todo</span>
+              <span class="check-name">{{ facts.ingest.vanished }} item(s) gone from the feed</span>
+              <span class="muted">Nothing deleted until you confirm.</span></li>
+          {% endif %}
+        </ul>
+      {% endif %}
+    {% endif %}
+
+    {% if not facts.ingest.canvas_configured %}
+      <p class="muted">
+        The Canvas feed address has not been set on the server, so
+        {{ 'nothing new is being collected' if facts.ingest.assignments else 'no assignments are being collected' }}.
+        Add <code>CANVAS_ICS_URL</code> to the secrets file and restart — see
+        <code>docs/SECRETS.md</code>.
+      </p>
+    {% endif %}
+  </section>
+
+  <section>
     <h2>What is not built yet</h2>
     <p class="muted">
-      This milestone builds the foundation only: the server, the private network, the
-      database, and backups. Coming next, in order — assignments arriving from Canvas
-      automatically, then the daily view that ranks them, then reminders on your phone.
+      Canvas assignments arrive automatically, and that is all so far. Coming next —
+      the daily view that ranks work by how much time you actually have rather than
+      by which deadline is nearest, entering things Canvas does not know about, and
+      then reminders on your phone.
     </p>
   </section>
 

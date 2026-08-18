@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 
 import pytest
 from fastapi.testclient import TestClient
@@ -115,6 +116,137 @@ def test_healthz_ignores_a_failing_data_source(client, db_path):
     assert response.status_code == 200
     assert response.json()["ok"] is True
     assert [s["level"] for s in response.json()["sync_sources"]] == ["failing"]
+
+
+# --- the assignments view (M1) ---------------------------------------------
+
+
+def _ingest_fixture(path):
+    from pathlib import Path
+
+    from app import canvas, ics
+
+    events = ics.parse_events(
+        (Path(__file__).parent / "fixtures" / "canvas_sample.ics").read_text("utf-8")
+    )
+    conn = db.connect(path)
+    try:
+        canvas.reconcile(conn, events, ZoneInfo("America/Indiana/Indianapolis"))
+    finally:
+        conn.close()
+
+
+def test_assignments_page_is_empty_before_anything_arrives(client):
+    body = client.get("/assignments").text
+    assert "Nothing has arrived yet" in body
+
+
+def test_assignments_page_groups_by_course(client, db_path):
+    _ingest_fixture(db_path)
+    body = client.get("/assignments").text
+
+    assert "Reading response one" in body
+    assert "Exam 1 Attempt 1 Sec 1.1 - 2.7" in body
+    # The course code stands in as a name until Mason supplies one.
+    assert "FA26-XX-STAT-S200-22222" in body
+    assert "STAT-S200" in body
+
+
+def test_assignments_page_shows_what_needs_attention(client, db_path):
+    _ingest_fixture(db_path)
+    body = client.get("/assignments").text
+    assert "could not be matched to a course" in body
+    assert "Departmental recital attendance" in body
+    assert "still named after a code" in body
+
+
+def test_assignments_page_states_the_feed_is_not_exhaustive(client, db_path):
+    """SPEC §6.3 wants this limitation prominent, not buried."""
+    _ingest_fixture(db_path)
+    body = client.get("/assignments").text
+    assert "Only work that has a due date in Canvas appears here" in body
+
+
+def test_a_vanished_item_is_shown_not_hidden(client, db_path):
+    _ingest_fixture(db_path)
+    conn = db.connect(db_path)
+    try:
+        conn.execute(
+            "UPDATE assignments SET feed_missing_since = '2026-09-01T00:00:00Z' "
+            "WHERE title = 'Quiz on lab safety'"
+        )
+    finally:
+        conn.close()
+
+    body = client.get("/assignments").text
+    assert "disappeared from the feed" in body
+    assert "Gone from the Canvas feed since" in body
+
+
+def test_status_page_links_to_assignments(client, db_path):
+    _ingest_fixture(db_path)
+    body = client.get("/").text
+    assert 'href="/assignments"' in body
+    # Collapse the template's line wrapping before matching on the sentence.
+    assert "7 tracked across 3 courses" in " ".join(body.split())
+
+
+def test_status_page_still_shows_assignments_when_polling_is_off(client, db_path, monkeypatch):
+    """Having data and still collecting it are separate facts.
+
+    If the feed address were removed, hiding the assignments already collected
+    would make the dashboard look empty rather than stale — the failure SPEC §4
+    is most concerned with.
+    """
+    monkeypatch.delenv("CANVAS_ICS_URL", raising=False)
+    _ingest_fixture(db_path)
+    body = " ".join(client.get("/").text.split())
+    assert "7 tracked across 3 courses" in body
+    assert "nothing new is being collected" in body
+
+
+def test_status_page_says_when_canvas_is_not_configured(client, monkeypatch):
+    monkeypatch.delenv("CANVAS_ICS_URL", raising=False)
+    body = client.get("/").text
+    assert "Canvas feed address has not been set" in body
+
+
+def test_healthz_reports_ingest_counts(client, db_path):
+    _ingest_fixture(db_path)
+    ingest = client.get("/healthz").json()["ingest"]
+    assert ingest["assignments"] == 7
+    assert ingest["courses"] == 3
+    assert ingest["needs_course"] == 1
+    assert ingest["courses_needing_name"] == 3
+
+
+def test_manual_sync_redirects_even_when_the_feed_fails(client, monkeypatch):
+    """A failed poll is recorded and shown, not turned into a 500."""
+    from app import canvas
+
+    monkeypatch.setattr(
+        canvas, "fetch",
+        lambda url, timeout=30.0: (_ for _ in ()).throw(canvas.FeedError("Canvas is down.")),
+    )
+    monkeypatch.setenv("CANVAS_ICS_URL", "https://example.invalid/secret.ics")
+
+    response = client.post("/sync/canvas", follow_redirects=False)
+    assert response.status_code == 303
+    assert response.headers["location"] == "/assignments"
+
+
+def test_manual_sync_ingests_a_feed(client, db_path, monkeypatch):
+    from pathlib import Path
+
+    from app import canvas
+
+    feed = (Path(__file__).parent / "fixtures" / "canvas_sample.ics").read_text("utf-8")
+    monkeypatch.setattr(canvas, "fetch", lambda url, timeout=30.0: feed)
+    monkeypatch.setenv("CANVAS_ICS_URL", "https://example.invalid/secret.ics")
+
+    client.post("/sync/canvas", follow_redirects=False)
+
+    assert client.get("/healthz").json()["ingest"]["assignments"] == 7
 
 
 # --- startup refuses a schema it does not recognise ------------------------
