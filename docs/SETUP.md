@@ -41,13 +41,16 @@ it.
 | 11. Put it on your phone | 10 minutes |
 | 12. Schedule the nightly backup | 10 minutes |
 | 13. Prove a backup can be restored | 20 minutes |
+| 14. Connect your Canvas calendar | 15 minutes |
+| 15. Turn on the chat | 15 minutes |
 
 About three hours in total, spread over as many sittings as you want.
 
 ### What it costs
 
-About $5 a month for the server, and under $1 a month for backup storage. Later
-milestones add roughly $3–5 a month for the chat feature.
+About $5 a month for the server, and under $1 a month for backup storage. The
+chat adds a few dollars a month at ordinary use — Section 15 covers setting a
+spending limit and shows a running total so it never surprises you.
 
 ### Things you will create and must write down
 
@@ -65,6 +68,8 @@ Here is the full list, so you know what is coming. Do not fill it in yet.
 | 4 | Backup encryption private key | Section 9 | **No. If you lose this, every backup is permanently unreadable.** |
 | 5 | Backblaze account password | Section 9 | Yes, by email reset |
 | 6 | Backblaze application key | Section 9 | **No.** Shown once. |
+| 7 | Canvas calendar feed address | Section 14 | Yes, from Canvas |
+| 8 | Claude API key | Section 15 | **No.** Shown once. |
 
 ---
 
@@ -1710,6 +1715,133 @@ Two things will look odd, and both are expected:
   appears. Courses that do not use Canvas that way — your music courses, most
   likely — produce nothing at all. This list is a floor, not the full picture, and
   entering the rest by hand is the next milestone's job.
+
+---
+
+## Section 15 — Turn on the chat
+
+**What this does:** lets you ask the dashboard questions in plain English, about
+your own deadlines or about anything else.
+
+**Why:** it is the difference between a list you read and an assistant you ask.
+It knows your courses, what is due, and how much spare time you have before each
+deadline, so "can I finish all this by Thursday" is a question it can actually
+answer.
+
+**Before you start:** Section 14 finished, with assignments arriving.
+
+**Time:** about 15 minutes.
+
+**What it costs:** a few dollars a month at ordinary use. The dashboard shows a
+running total for the current month so it never surprises you, and the last step
+of this section explains how to halve it if it climbs.
+
+### Steps
+
+1. **In a web browser**, go to <https://console.anthropic.com> and create an
+   account if you do not have one.
+
+2. Add a payment method. Look for **Billing** in the left-hand menu, or under your
+   account name in the top right.
+
+   > **Set a spending limit while you are there.** Look for a monthly limit or
+   > budget field on the same billing page and set it to something you would not
+   > mind losing — $25 is generous for this. It converts the worst case from a
+   > surprising bill into a chat that stops working.
+
+3. In the left-hand menu, click **API Keys**, then **Create Key**. Name it
+   `dashboard`.
+
+   > **The key is shown once.** Copy it now and record it as **item 7** on your
+   > list. If you leave the page without copying it, delete it and make another.
+
+4. **On the server**, open the secrets file:
+
+   ```
+   ssh mason@100.85.173.35
+   ```
+
+   ```
+   hostname
+   ```
+
+   Confirm this prints your server's name before continuing.
+
+   ```
+   sudo nano /etc/college-dashboard/env
+   ```
+
+5. Add one line, with your key after the `=` and no spaces around it:
+
+   ```
+   CLAUDE_API_KEY=sk-ant-api03-EXAMPLEEXAMPLEEXAMPLE
+   ```
+
+   Save and exit: `Control` and `O`, `Return`, `Control` and `X`.
+
+6. Restart:
+
+   ```
+   cd /home/mason/College-Dashboard
+   ```
+
+   ```
+   sudo docker compose up -d
+   ```
+
+### Check before continuing
+
+Open the dashboard and tap **Ask**. The warning about chat not being switched on
+should be gone. Ask it:
+
+```
+what's due this week?
+```
+
+The reply should name your actual assignments, with real due dates. Watch for the
+word **Reasoning** appearing above the answer — you can tap it to see how it
+worked the answer out.
+
+Then ask it two more things, because they check different things:
+
+- **Something with no schedule in it at all**, such as `explain what a limit is in
+  calculus`. It should answer properly. It is a general assistant, not only a
+  deadline reader.
+- **Something about a message**, such as `what did my professor email me about the
+  recital?`. It should tell you plainly that it has no archive of your messages
+  yet. If it invents an email, tell me — that is the one failure that matters here,
+  and it is the reason the archive milestone exists.
+
+### Troubleshooting
+
+- **The page still says chat is not switched on** — the line did not save, or has
+  a space around the `=`. Check with
+  `sudo grep -c CLAUDE_API_KEY /etc/college-dashboard/env`, which should print `1`.
+
+- **`Something went wrong talking to Claude`** — the detail is in the log, kept out
+  of the browser because an API error can quote the request and the request carries
+  your key. Run `sudo docker compose logs --tail 30`.
+
+- **`authentication_error`** in the log — the key is wrong or was deleted. Make a
+  new one at the console and update the secrets file.
+
+- **`credit balance is too low`** — add credit at the console's billing page.
+
+- **The answer starts, then stops partway** — usually a network drop. Reload the
+  page; if the answer was saved it will be there.
+
+### If it costs more than you want
+
+The dashboard shows the running monthly total at the bottom of the **Ask** page
+and on the status page. If it climbs higher than you like, one line halves it —
+add this to the secrets file and restart:
+
+```
+CHAT_MODEL=claude-sonnet-5
+```
+
+That switches to a cheaper model that is still very capable. Nothing else changes,
+and you can switch back the same way.
 
 ---
 

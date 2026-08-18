@@ -153,6 +153,35 @@ Anything in **Needs a date** has an **Add details** button. That opens the same
 form, already holding what you captured, so you can give it a course, a date and a
 length and let it join the ranking.
 
+### Ask it something
+
+**Ask**, at the top of Today. It knows today's date, your courses, everything due
+in the next two weeks, and how much spare time you have before each deadline —
+that context goes with every question, so you never have to set the scene.
+
+Worth asking:
+
+```
+what should I do first today?
+am I going to be able to finish all this by Thursday?
+what's the least damaging thing to skip this week?
+explain species counterpoint to me like I've forgotten the lecture
+```
+
+The last one is not a mistake — it answers general questions as readily as
+schedule ones. There is no mode to switch.
+
+It will say **Reasoning** above longer answers; tap it to see how it worked
+something out. Below each answer is what that answer cost, and the bottom of the
+page shows the running total for the month.
+
+**It cannot see your messages or emails.** That archive is not built yet, and it
+will tell you so rather than guessing. If it ever appears to remember an email,
+that is a bug worth reporting.
+
+**It cannot change anything.** Marking work done, adding assignments and editing
+courses are all yours — it reads, it does not write.
+
 ### Name a course properly
 
 Canvas gives no readable course name in its calendar, only an enrolment code like
@@ -183,6 +212,7 @@ you put into it.
 | Screen | What it is for |
 |---|---|
 | **Today** (the front page) | The daily view described above |
+| **Ask** | Questions about your schedule, or about anything else |
 | **Add work** | One assignment Canvas does not know about |
 | **Paste a syllabus** | A whole term of assignments in one go |
 | **Courses** | Adding and editing courses, instructors, meeting times, late policies |

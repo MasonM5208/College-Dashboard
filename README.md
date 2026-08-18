@@ -59,8 +59,17 @@ entry, syllabus batch entry with a preview step, and course management, so the
 courses Canvas cannot see are represented too. See
 [docs/DAILY_USE.md](docs/DAILY_USE.md).
 
+**M5 — Chat: built, awaiting its first real call.** One endpoint with tools over
+the assignment data, per SPEC §10's instruction not to write an intent classifier.
+Today's date, courses, and the next 14 days of deadlines with slack are injected
+into every request. Replies stream; token cost is recorded per message and the
+running monthly total is shown. Pulled ahead of M3 and M4 by request. The two
+archive tools SPEC §10 lists arrive with M4 and the table they read; until then
+the assistant states plainly that it has no message archive.
+
 Next: **M3**, reminders — ladders of escalating nudges pushed to Apple Reminders
-over CalDAV, so a deadline reaches the phone with the laptop shut.
+over CalDAV, so a deadline reaches the phone with the laptop shut. Then **M4**,
+the document archive, which completes the chat's tool set.
 
 Build order and the acceptance criteria for each milestone are in [SPEC.md
 §12](SPEC.md).

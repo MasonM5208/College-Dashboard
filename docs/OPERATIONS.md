@@ -337,6 +337,48 @@ no readable name anywhere in it. The first time a code appears, the dashboard
 creates the course using the code as a placeholder name and marks it as needing a
 real one. Renaming arrives with M2.
 
+### The chat has stopped answering
+
+The error shown on the page is deliberately vague, because an API error can quote
+the request back and the request carries your key. The detail is in the log:
+
+```
+sudo docker compose logs --tail 30 | grep -i chat
+```
+
+- **`authentication_error`** — the key is wrong, was deleted, or never saved.
+  Check with `sudo grep -c CLAUDE_API_KEY /etc/college-dashboard/env`, which
+  should print `1`, then make a fresh key at `console.anthropic.com`.
+- **`credit balance is too low`** — add credit on the console's billing page.
+- **`rate_limit_error`** — asking faster than the account allows. It clears on its
+  own; wait a minute.
+- **Nothing about chat in the log at all** — the key is not set, and the page says
+  so at the top.
+
+### The chat is costing more than expected
+
+The running total for the month is at the bottom of the **Ask** page and on the
+status page. To halve the cost, switch models — add this line to
+`/etc/college-dashboard/env` and restart:
+
+```
+CHAT_MODEL=claude-sonnet-5
+```
+
+Sonnet is roughly half the price per token and still very capable for this. To go
+further, `CHAT_EFFORT=medium` makes it think less before answering. Both are
+reversible: remove the line and restart.
+
+Historical messages keep the price of whichever model produced them — the model is
+recorded per message, so switching does not silently rewrite what the past cost.
+
+### The chat claims to remember an email
+
+**Report this rather than working around it.** There is no message archive until
+M4, and the assistant is instructed to say so plainly instead of guessing. An
+invented email is the one failure mode this milestone was designed to prevent, and
+it means the instruction is not holding.
+
 ### A job says `stale` or `failing` on the dashboard
 
 `stale` means it has not succeeded recently enough. `failing` means it has failed

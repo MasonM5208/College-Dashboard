@@ -7,7 +7,9 @@ the decisions that are not obvious from reading the code, including the ones tha
 were rejected. A rejected alternative documented is a rejected alternative nobody
 has to re-investigate.
 
-Current state: **M0 complete.** M1 onward not started.
+Current state: **M0, M1, M2 and M5 built.** M3 (reminders) and M4 (the document
+archive) are not started — M5 was pulled ahead of both at Mason's request, which
+is why the chat ships with two of its four tools.
 
 ---
 
@@ -106,8 +108,9 @@ are pending, which covers someone running uvicorn by hand.
 
 ### Why the schema arrives in pieces
 
-`0001_core.sql` creates only the tables M1–M3 need. Documents, the FTS5 index and
-chat arrive in M4; capacity, the timer and calibration in M6. Each table lands
+`0001_core.sql` creates only the tables M1–M3 need. `0002_ingest.sql` adds what
+Canvas ingestion required, and `0003_chat.sql` the two chat tables. Documents and
+the FTS5 index arrive with M4; capacity, the timer and calibration with M6. Each table lands
 alongside the code that exercises it, so a mistake is caught by use rather than
 discovered months later, when fixing it would need exactly the destructive
 `ALTER`/rebuild that SPEC forbids doing casually.
@@ -321,6 +324,77 @@ which is where SPEC puts that interaction.
 The backup must survive a crash-looping container, because that is when last
 night's copy matters. Polling Canvas is meaningless when the app is down. Hence
 one in cron and one in an asyncio task, which looks inconsistent and is not.
+
+---
+
+## The chat layer (M5)
+
+`app/claude_chat.py`. SPEC §10 settles the shape: no intent classifier, tools plus
+a model that chooses among them. A mixed question — "when is my bio lab due and
+can you explain the assay" — is one turn through one code path.
+
+### Built before M3 and M4, and what that cost
+
+Pulled forward at Mason's request. Two of SPEC §10's four tools read `documents`,
+which is M4. The consequence needed designing around rather than discovering:
+asked about an email it has no tool to look up, a model reconstructs one. The
+system prompt states there is no archive and forbids guessing, and a test asserts
+that text is present. Until M4 the correct answer to "what did she email me" is "I
+cannot see your messages".
+
+### A hand-written loop, not the SDK tool runner
+
+The runner is the better default. It also keeps its own message history and does
+not expose it, and this milestone persists every turn — content, tool calls, tool
+results, token counts — to `chat_messages` as it happens. Owning the loop is the
+requirement, not a preference.
+
+### What the model's own documentation changed
+
+Written after reading the current API reference rather than from memory, which
+changed four things that would otherwise be wrong:
+
+- `temperature`, `top_p` and `budget_tokens` return **400** on this model. None
+  appear anywhere.
+- **Thinking is on by default**, and `max_tokens` caps thinking and reply
+  together — a budget sized for the answer alone truncates mid-sentence.
+- `thinking.display` defaults to **omitted**, which in a streaming UI is a dead
+  pause until reasoning finishes. Set to `summarized` and shown collapsed.
+- Safety classifiers can decline with an **HTTP 200 and empty content**, so
+  `stop_reason` is checked before `content` is ever indexed. Server-side fallbacks
+  are enabled, but fail-safe: the beta could not be tested without a key, so a
+  rejection logs once and continues without it. An untestable optional feature
+  must not be able to take the feature down.
+
+### Cost is recorded per message, not per model
+
+`chat_messages.model` stores which model produced each turn. Switching from Opus
+to Sonnet must not silently re-price the history, and a global constant would.
+Cache reads and writes are counted separately from ordinary input because they
+bill at roughly a tenth and one and a quarter times the input rate.
+
+`CHAT_MODEL` and `CHAT_EFFORT` are settings rather than constants. SPEC §4 forbids
+a provider abstraction; this is not one — same API, different model string.
+
+### Prompt caching, and why it probably does nothing yet
+
+The system prompt is split so the stable instructions carry the cache breakpoint
+and the volatile context follows. That ordering is required: caching is a prefix
+match, so today's date above the instructions would invalidate every request.
+
+The instruction block is around 475 tokens and the minimum is 512, so it likely
+does not cache at all — silently, with a zero in `cache_read_tokens`. Left alone
+deliberately: caching that block would save about a hundredth of a cent per
+message, and padding it to clear the threshold would cost more than it returns.
+The breakpoint stays because it is free and starts paying when M4's archive rules
+grow the prompt past the minimum.
+
+### One source of truth for slack
+
+The `get_assignments` tool ranks through `app/priority.py` — the same code the
+Today view uses. Two implementations of "how much spare time is there" would
+eventually disagree, and Mason would find out mid-week, from a number the chat
+gave him that the dashboard contradicts.
 
 ---
 
