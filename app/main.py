@@ -25,7 +25,8 @@ from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, Stre
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
-from app import canvas, claude_chat, config, db, entry, migrate, priority, scheduler, status
+from app import (canvas, claude_chat, config, db, entry, migrate, priority,
+                 reminders, scheduler, status)
 
 log = logging.getLogger("dashboard")
 
@@ -633,13 +634,9 @@ def edit_assignment(
             ),
         )
         if existing["due_at"] != due_at:
-            # SPEC §5: a changed deadline supersedes pending reminders rather than
-            # moving them, the same rule ingestion follows.
-            conn.execute(
-                "UPDATE reminder_instances SET state = 'superseded' "
-                "WHERE assignment_id = ? AND state = 'pending'",
-                (assignment_id,),
-            )
+            # SPEC §5: a changed deadline retires its reminders rather than moving
+            # them, the same rule ingestion follows. The next sync rebuilds them.
+            reminders.supersede_for(conn, assignment_id)
         conn.execute(
             "INSERT INTO audit_log (action, table_name, record_id, detail_json) "
             "VALUES ('edit', 'assignments', ?, ?)",

@@ -29,7 +29,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 
-from app import config, ics
+from app import config, ics, reminders
 
 log = logging.getLogger("canvas")
 
@@ -305,14 +305,10 @@ def reconcile(
         )
 
         if "due_at" in changes:
-            # SPEC §5: a moved deadline supersedes its pending reminders rather
-            # than mutating them, so the history stays auditable. Nothing writes
-            # reminder_instances until M3; this keeps that milestone honest.
-            conn.execute(
-                "UPDATE reminder_instances SET state = 'superseded' "
-                "WHERE assignment_id = ? AND state = 'pending'",
-                (assignment_id,),
-            )
+            # SPEC §5: a moved deadline retires its reminders rather than moving
+            # them, so the record of what was scheduled survives. The next sync
+            # builds the new ladder and overwrites the to-do on the phone.
+            reminders.supersede_for(conn, assignment_id)
 
         _audit(conn, "ingest_update", assignment_id,
                {"ics_uid": event.uid, "changes": changes})

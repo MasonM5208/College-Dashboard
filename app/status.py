@@ -124,6 +124,26 @@ def ingest_summary(conn: sqlite3.Connection) -> dict:
     }
 
 
+def reminder_summary(conn: sqlite3.Connection) -> dict:
+    """How much of the ladder has actually reached the phone.
+
+    SPEC §12 judges M3 on a reminder firing with the laptop shut, so "how many are
+    on the phone" is the number worth showing — not how many exist here.
+    """
+    one = lambda sql: int(conn.execute(sql).fetchone()[0])  # noqa: E731
+    from app import caldav_push
+
+    return {
+        "on_phone": one("SELECT COUNT(*) FROM reminder_instances WHERE state = 'sent'"),
+        "waiting": one("SELECT COUNT(*) FROM reminder_instances WHERE state = 'pending'"),
+        "assignments_covered": one(
+            "SELECT COUNT(DISTINCT assignment_id) FROM reminder_instances "
+            "WHERE state = 'sent'"
+        ),
+        "configured": caldav_push.configured(),
+    }
+
+
 def collect(conn: sqlite3.Connection, now: datetime | None = None) -> dict:
     """Everything the status page and /healthz report."""
     now = now or datetime.now(timezone.utc)
@@ -148,6 +168,7 @@ def collect(conn: sqlite3.Connection, now: datetime | None = None) -> dict:
         "checks": checks,
         "ingest": ingest_summary(conn),
         "chat_spend": claude_chat.month_to_date_cost(conn, now),
+        "reminders": reminder_summary(conn),
         "schema_version": migrate.current_version(conn),
         "pending_migrations": outstanding,
         "database_path": str(config.DB_PATH),

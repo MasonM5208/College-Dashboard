@@ -131,12 +131,34 @@
   </section>
 
   <section>
+    <h2>Reminders</h2>
+    {% if facts.reminders.configured %}
+      <p class="muted">
+        {{ facts.reminders.on_phone }} alert{{ '' if facts.reminders.on_phone == 1 else 's' }}
+        on your phone, across {{ facts.reminders.assignments_covered }}
+        assignment{{ '' if facts.reminders.assignments_covered == 1 else 's' }}.
+        {%- if facts.reminders.waiting %}
+          {{ facts.reminders.waiting }} waiting for the next sync.
+        {%- endif %}
+        Once an alert is on the phone it fires whether or not this server is
+        running.
+      </p>
+    {% else %}
+      <p class="muted">
+        Apple Reminders is not connected, so nothing reaches your phone. Add
+        <code>CALDAV_USERNAME</code> and <code>CALDAV_PASSWORD</code> to the secrets
+        file — see <code>docs/SETUP.md</code> section 16.
+      </p>
+    {% endif %}
+  </section>
+
+  <section>
     <h2>What is not built yet</h2>
     <p class="muted">
-      Canvas assignments arrive automatically, and that is all so far. Coming next —
-      the daily view that ranks work by how much time you actually have rather than
-      by which deadline is nearest, entering things Canvas does not know about, and
-      then reminders on your phone.
+      The document archive, which is what lets the chat answer questions about
+      saved emails and messages. After that: the real capacity model, a start/stop
+      timer, and the overload mode that names what is cheapest to sacrifice when a
+      week does not fit.
     </p>
   </section>
 

@@ -166,7 +166,7 @@ def test_a_moved_due_date_is_detected_and_recorded(conn, feed_events):
     assert "2026-09-18T13:10:00Z" in entry["detail_json"]
 
 
-def test_a_moved_deadline_supersedes_pending_reminders(conn, feed_events):
+def test_a_moved_deadline_supersedes_its_reminders(conn, feed_events):
     """SPEC §5: supersede and regenerate; never mutate fire_at in place."""
     sync_from(conn, feed_events)
     assignment_id = rows(
@@ -193,8 +193,12 @@ def test_a_moved_deadline_supersedes_pending_reminders(conn, feed_events):
             assignment_id,
         )
     ]
-    # The pending one is superseded; the one already sent is history and untouched.
-    assert states == ["superseded", "sent"]
+    # Both are superseded, and this is the point. Under M3 a 'sent' instance means
+    # its alarm is sitting on the phone inside that assignment's to-do — so a moved
+    # deadline makes it wrong, and leaving it would fire an alert at the old time.
+    # Nothing is lost: superseded rows are kept, which is what SPEC §5 means by the
+    # history staying auditable.
+    assert states == ["superseded", "superseded"]
 
 
 def test_a_retitled_event_updates_in_place(conn, feed_events):

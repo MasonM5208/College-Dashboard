@@ -18,7 +18,7 @@ from __future__ import annotations
 import asyncio
 import logging
 
-from app import canvas, config, db
+from app import caldav_push, canvas, config, db
 
 log = logging.getLogger("scheduler")
 
@@ -57,19 +57,53 @@ async def _canvas_loop() -> None:
         await asyncio.sleep(CANVAS_POLL_SECONDS)
 
 
+def push_reminders_once() -> caldav_push.SyncResult:
+    """One reminder sync, start to finish. Blocking; call it in a thread."""
+    conn = db.connect()
+    try:
+        return caldav_push.sync(conn)
+    finally:
+        conn.close()
+
+
+async def _reminder_loop() -> None:
+    await asyncio.sleep(STARTUP_DELAY_SECONDS * 2)
+    while True:
+        try:
+            await asyncio.to_thread(push_reminders_once)
+        except caldav_push.CalDavError as exc:
+            # Already recorded in sync_state and shown on the status page.
+            log.warning("Reminder sync failed: %s", exc)
+        except Exception:
+            log.exception("Reminder sync raised an unexpected error")
+        await asyncio.sleep(caldav_push.SYNC_INTERVAL_SECONDS)
+
+
 def start(app) -> list[asyncio.Task]:
     """Start background jobs, returning the tasks so shutdown can cancel them."""
     tasks: list[asyncio.Task] = []
 
-    if not config.canvas_configured():
+    if config.canvas_configured():
+        tasks.append(asyncio.create_task(_canvas_loop(), name="canvas-poll"))
+        log.info("Canvas polling every %d minutes.", CANVAS_POLL_SECONDS // 60)
+    else:
         log.info(
             "CANVAS_ICS_URL is not set, so the Canvas feed will not be polled. "
             "Add it to the secrets file to turn ingestion on — see docs/SECRETS.md."
         )
-        return tasks
 
-    tasks.append(asyncio.create_task(_canvas_loop(), name="canvas-poll"))
-    log.info("Canvas polling every %d minutes.", CANVAS_POLL_SECONDS // 60)
+    if caldav_push.configured():
+        tasks.append(asyncio.create_task(_reminder_loop(), name="reminder-sync"))
+        log.info(
+            "Reminders syncing to Apple every %d minutes.",
+            caldav_push.SYNC_INTERVAL_SECONDS // 60,
+        )
+    else:
+        log.info(
+            "CALDAV_USERNAME and CALDAV_PASSWORD are not set, so reminders will not "
+            "reach your phone. See docs/SETUP.md section 16."
+        )
+
     return tasks
 
 
