@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+
+{% block title %}Courses — Semester Dashboard{% endblock %}
+{% block heading %}Courses{% endblock %}
+
+{% block subheading %}
+  <p class="muted"><a href="/">Today</a> · <a href="/add">Add work</a></p>
+{% endblock %}
+
+{% block content %}
+
+  {% for course in courses %}
+    <section>
+      <h2>
+        {{ course.name }}
+        {%- if course.needs_naming %} <span class="pill pill-bad">needs a name</span>{% endif %}
+      </h2>
+      <p class="muted">
+        {{ course.assignment_count }} assignment{{ '' if course.assignment_count == 1 else 's' }}
+        {%- if course.ics_summary_pattern %} · arrives from Canvas{% endif %}
+      </p>
+      <form method="post" action="/courses/{{ course.id }}/edit" class="form form-compact">
+        <label><span>Name</span>
+          <input type="text" name="name" value="{{ course.name }}" required></label>
+        <label><span>Code</span>
+          <input type="text" name="code" value="{{ course.code or '' }}"></label>
+        <label><span>Instructor</span>
+          <input type="text" name="instructor" value="{{ course.instructor or '' }}"></label>
+        <label><span>Meets</span>
+          <input type="text" name="meeting_pattern" value="{{ course.meeting_pattern or '' }}"
+                 placeholder="MWF 10:10-11:00"></label>
+        <label><span>Credits</span>
+          <input type="text" name="credits" value="{{ '%g' % course.credits if course.credits else '' }}"></label>
+        <label><span>Late policy</span>
+          <input type="text" name="late_policy" value="{{ course.late_policy or '' }}"
+                 placeholder="10% per day"></label>
+        <label><span>Current grade %</span>
+          <input type="text" name="current_grade_pct"
+                 value="{{ '%g' % course.current_grade_pct if course.current_grade_pct is not none else '' }}"></label>
+        <button type="submit">Save</button>
+      </form>
+    </section>
+  {% endfor %}
+
+  <section>
+    <h2>Add a course</h2>
+    <p class="muted">
+      For the courses Canvas does not put in its calendar. Only a name is needed;
+      the rest can wait until you have the syllabus in front of you.
+    </p>
+    <form method="post" action="/courses" class="form form-compact">
+      <label><span>Name</span>
+        <input type="text" name="name" required placeholder="Music Theory III"></label>
+      <label><span>Code</span>
+        <input type="text" name="code" placeholder="MUS-T 251"></label>
+      <label><span>Instructor</span><input type="text" name="instructor"></label>
+      <label><span>Meets</span>
+        <input type="text" name="meeting_pattern" placeholder="MWF 10:10-11:00"></label>
+      <label><span>Credits</span><input type="text" name="credits"></label>
+      <label><span>Late policy</span>
+        <input type="text" name="late_policy" placeholder="10% per day"></label>
+      <button type="submit">Add course</button>
+    </form>
+  </section>
+
+{% endblock %}

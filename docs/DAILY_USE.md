@@ -117,6 +117,42 @@ you give it one. Use it constantly — for something a professor said in class, 
 book to find, a question to ask. Anything you have to stop and categorise is
 something you will not bother writing down at all.
 
+### Add work Canvas does not know about
+
+**Add work** on the Today screen. Title, course, kind of work, when it is due, how
+long it will take. The estimate fills itself in from the kind of work you pick —
+change it if you know better, but it is never saved without you seeing it.
+
+Dates can be typed however you think of them: `2026-09-08`, `9/8`, `Sep 8`, or
+`Sep 8 2pm`. With no time, it means the end of that day. With no year, it means the
+next one to come, so typing a syllabus in August files December correctly.
+
+### Type up a whole syllabus at once
+
+**Paste a syllabus**. Pick the course, then one assignment per line:
+
+```
+Species counterpoint 1 | 2026-09-08 | 2h
+Species counterpoint 2 | 9/15 | 2h
+Listening journal wk3 | Sep 17
+Midterm exam | 10/6 | 6h | exam
+```
+
+Title first, then the due date, then how long it takes, separated by `|`. Only the
+title is required. A fourth part sets the kind of work if the title does not make
+it obvious.
+
+Press **Check it** and you get a preview of exactly what would be created.
+**Nothing is saved until you press Save**, and any line that could not be read is
+shown with the reason, left out, and waiting for you to fix it. A whole 14-week
+syllabus takes about two minutes this way.
+
+### Fill in a captured note
+
+Anything in **Needs a date** has an **Add details** button. That opens the same
+form, already holding what you captured, so you can give it a course, a date and a
+length and let it join the ranking.
+
 ### Name a course properly
 
 Canvas gives no readable course name in its calendar, only an enrolment code like
@@ -136,8 +172,9 @@ For you specifically, that means **most of your courses are not represented**. Y
 music courses produce nothing at all. Treat the list as a floor, never as the full
 picture, and keep using quick capture for everything else.
 
-Entering assignments by hand, and typing up a syllabus in one go, are the next
-piece of work.
+So for anything not in Canvas, **Add work** and **Paste a syllabus** are how it
+gets in, and quick capture is for the rest. The system is only as complete as what
+you put into it.
 
 ---
 
@@ -146,6 +183,9 @@ piece of work.
 | Screen | What it is for |
 |---|---|
 | **Today** (the front page) | The daily view described above |
+| **Add work** | One assignment Canvas does not know about |
+| **Paste a syllabus** | A whole term of assignments in one go |
+| **Courses** | Adding and editing courses, instructors, meeting times, late policies |
 | **Everything** | Every assignment grouped by course, including finished ones |
 | **Status** | Whether the server, the database and the Canvas sync are healthy |
 

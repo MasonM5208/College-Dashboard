@@ -51,14 +51,16 @@ courses arrive identified only by an enrolment code, and **only work with a due
 date set in Canvas appears at all**, so courses that do not use Canvas that way are
 invisible. See `SETUP.md` Section 14.
 
-**M2 — Today view: first half built.** The default screen ranks work by slack —
-free hours before the deadline minus hours of work left — rather than by which
-deadline is nearest, with the numbers behind every position shown alongside it.
-One-tap status changes, one-tap time estimates, quick capture, pinning and course
-renaming. See [docs/DAILY_USE.md](docs/DAILY_USE.md).
+**M2 — Today view: built, awaiting daily use.** The default screen ranks work by
+slack — free hours before the deadline minus hours of work left — rather than by
+which deadline is nearest, with the numbers behind every position shown alongside
+it. One-tap status changes and time estimates, quick capture, pinning, manual
+entry, syllabus batch entry with a preview step, and course management, so the
+courses Canvas cannot see are represented too. See
+[docs/DAILY_USE.md](docs/DAILY_USE.md).
 
-Next: the second half of M2 — entering assignments by hand and typing up a
-syllabus in one go, so the courses Canvas cannot see are represented too.
+Next: **M3**, reminders — ladders of escalating nudges pushed to Apple Reminders
+over CalDAV, so a deadline reaches the phone with the laptop shut.
 
 Build order and the acceptance criteria for each milestone are in [SPEC.md
 §12](SPEC.md).

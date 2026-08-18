@@ -1,0 +1,99 @@
+{% extends "base.html" %}
+
+{% block title %}Paste a syllabus — Semester Dashboard{% endblock %}
+{% block heading %}Paste a syllabus{% endblock %}
+
+{% block subheading %}
+  <p class="muted">
+    Many assignments at once. <a href="/">Today</a> · <a href="/add">Add one</a>
+  </p>
+{% endblock %}
+
+{% block content %}
+
+  <form method="post" action="/batch" class="form">
+    <label>
+      <span>Course for all of these</span>
+      <select name="course_id">
+        <option value="">No course</option>
+        {% for course in courses %}
+          <option value="{{ course.id }}" {% if course.id|string == course_id %}selected{% endif %}>
+            {{ course.name }}
+          </option>
+        {% endfor %}
+      </select>
+    </label>
+
+    <label>
+      <span>One per line</span>
+      <textarea name="pasted" rows="10" placeholder="Species counterpoint 1 | 2026-09-08 | 2h
+Species counterpoint 2 | 9/15 | 2h
+Listening journal wk3 | Sep 17
+Midterm exam | 10/6 | 6h">{{ pasted }}</textarea>
+      <small class="muted">
+        Title first, then due date, then how long it takes, separated by the
+        <code>|</code> character. Only the title is required. Add a fourth part to
+        set the kind of work. Lines starting with <code>#</code> are ignored.
+      </small>
+    </label>
+
+    <button type="submit">Check it</button>
+  </form>
+
+  {% if lines is not none %}
+    {% set good = lines | selectattr('line.ok') | list %}
+    {% set bad = lines | rejectattr('line.ok') | list %}
+
+    <section>
+      <h2>What this would add</h2>
+
+      {% if not lines %}
+        <p class="muted">Nothing to read yet.</p>
+      {% endif %}
+
+      {% if good %}
+        <ul class="stack">
+          {% for entry in good %}
+            <li class="card">
+              <div class="card-title">{{ entry.line.title }}</div>
+              <div class="muted">
+                {% if entry.due_display %}due {{ entry.due_display }}{% else %}no due date{% endif %}
+                {%- if entry.line.est_hours %} · {{ '%g' % entry.line.est_hours }}h of work
+                {%- else %} · no estimate yet{% endif %}
+                {%- if entry.line.type != 'other' %} · {{ entry.line.type }}{% endif %}
+              </div>
+            </li>
+          {% endfor %}
+        </ul>
+      {% endif %}
+
+      {% if bad %}
+        <div class="banner banner-bad">
+          <strong>{{ bad | length }} line{{ '' if bad | length == 1 else 's' }} could not be read.</strong>
+          Those are left out. Fix them above and check again — nothing is saved
+          without you seeing it here first.
+        </div>
+        <ul class="stack">
+          {% for entry in bad %}
+            <li class="card card-late">
+              <div class="muted">Line {{ entry.line.number }}</div>
+              <div class="card-title">{{ entry.line.raw }}</div>
+              <div class="error-text">{{ entry.line.error }}</div>
+            </li>
+          {% endfor %}
+        </ul>
+      {% endif %}
+
+      {% if good %}
+        <form method="post" action="/batch/save">
+          <input type="hidden" name="pasted" value="{{ pasted }}">
+          <input type="hidden" name="course_id" value="{{ course_id }}">
+          <button type="submit">
+            Save {{ good | length }} assignment{{ '' if good | length == 1 else 's' }}
+          </button>
+        </form>
+      {% endif %}
+    </section>
+  {% endif %}
+
+{% endblock %}

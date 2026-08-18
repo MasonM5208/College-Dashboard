@@ -1,0 +1,87 @@
+{% extends "base.html" %}
+
+{% block title %}Add work — Semester Dashboard{% endblock %}
+{% block heading %}Add work{% endblock %}
+
+{% block subheading %}
+  <p class="muted">
+    For anything Canvas does not know about. <a href="/">Today</a> ·
+    <a href="/batch">Paste a syllabus</a> · <a href="/courses">Courses</a>
+  </p>
+{% endblock %}
+
+{% block content %}
+
+  {% if error %}
+    <div class="banner banner-bad">{{ error }}</div>
+  {% endif %}
+
+  <form method="post" action="/add" class="form">
+    <label>
+      <span>What is it?</span>
+      <input type="text" name="title" value="{{ title_value }}" required
+             autocomplete="off" placeholder="Species counterpoint exercise 1">
+    </label>
+
+    <label>
+      <span>Course</span>
+      <select name="course_id">
+        <option value="">No course</option>
+        {% for course in courses %}
+          <option value="{{ course.id }}">{{ course.name }}</option>
+        {% endfor %}
+      </select>
+    </label>
+
+    <label>
+      <span>Kind of work</span>
+      {# Changing this updates the hours field below, so the per-type default is
+         always visible before saving rather than applied silently. #}
+      <select name="type" id="type-select">
+        {% for t in types %}
+          <option value="{{ t }}" {% if t == 'other' %}selected{% endif %}>{{ t }}</option>
+        {% endfor %}
+      </select>
+    </label>
+
+    <label>
+      <span>Due</span>
+      <input type="text" name="due" autocomplete="off"
+             placeholder="2026-09-08, 9/8, or Sep 8 2pm">
+      <small class="muted">Leave the time off and it means the end of that day.</small>
+    </label>
+
+    <label>
+      <span>How long will it take?</span>
+      <input type="text" name="hours" id="hours-input" autocomplete="off"
+             value="{{ '%g' % default_hours['other'] }}" placeholder="2h, 90m, 1.5">
+      <small class="muted">
+        A rough number beats none — nothing can be ranked without it. Papers
+        usually take about twice as long as expected.
+      </small>
+    </label>
+
+    <label>
+      <span>Points it is worth <span class="muted">(optional)</span></span>
+      <input type="text" name="points" autocomplete="off" placeholder="100">
+    </label>
+
+    <button type="submit">Add it</button>
+  </form>
+
+  <script>
+    // Keeps the estimate in step with the kind of work chosen. The value stays
+    // editable and on screen — SPEC §9 wants the number seen before it is saved.
+    (function () {
+      var defaults = {{ default_hours | tojson }};
+      var type = document.getElementById('type-select');
+      var hours = document.getElementById('hours-input');
+      var edited = false;
+      hours.addEventListener('input', function () { edited = true; });
+      type.addEventListener('change', function () {
+        if (!edited) { hours.value = String(defaults[type.value]); }
+      });
+    })();
+  </script>
+
+{% endblock %}

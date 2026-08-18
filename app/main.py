@@ -24,7 +24,7 @@ from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
-from app import canvas, config, db, migrate, priority, scheduler, status
+from app import canvas, config, db, entry, migrate, priority, scheduler, status
 
 log = logging.getLogger("dashboard")
 
@@ -421,6 +421,441 @@ def rename_course(course_id: int, request: Request, name: str = Form(...)):
         )
     finally:
         conn.close()
+    return _back(request)
+
+
+
+# --- entering things by hand ------------------------------------------------
+#
+# Canvas only carries work that has a due date set in it, which leaves most of
+# Mason's semester invisible (SPEC §6.3). These are the paths by which the rest
+# gets in.
+
+
+def _courses(conn):
+    return conn.execute(
+        "SELECT id, name, code, needs_naming FROM courses ORDER BY needs_naming DESC, name"
+    ).fetchall()
+
+
+def _default_term_id(conn) -> int:
+    """The term new courses join, creating one if the database is empty.
+
+    Terms exist mainly for M6's capacity model. Until then a course needs one
+    because courses.term_id is NOT NULL, and asking Mason to invent a term before
+    he can add a course would be friction for nothing.
+    """
+    row = conn.execute("SELECT id FROM terms ORDER BY start_date DESC LIMIT 1").fetchone()
+    if row:
+        return int(row["id"])
+
+    today = datetime.now(timezone.utc).date()
+    cur = conn.execute(
+        "INSERT INTO terms (name, start_date, end_date, needs_dates) VALUES (?,?,?,1)",
+        ("Current term", today.isoformat(), (today + timedelta(days=120)).isoformat()),
+    )
+    return int(cur.lastrowid)
+
+
+@app.get("/add")
+def add_form(request: Request, error: str | None = None, title: str = ""):
+    conn = db.connect()
+    try:
+        courses = _courses(conn)
+    finally:
+        conn.close()
+
+    return templates.TemplateResponse(
+        request=request,
+        name="add.html",
+        context={
+            "courses": courses,
+            "types": entry.ASSIGNMENT_TYPES,
+            "default_hours": entry.DEFAULT_HOURS_BY_TYPE,
+            "error": error,
+            "title_value": title,
+        },
+    )
+
+
+@app.post("/add")
+def add_assignment(
+    request: Request,
+    title: str = Form(...),
+    course_id: str = Form(""),
+    type: str = Form("other"),
+    due: str = Form(""),
+    hours: str = Form(""),
+    points: str = Form(""),
+):
+    """Create one assignment.
+
+    SPEC §9 asks for the estimate on every create, so the form arrives with a
+    per-type default already filled in and visible rather than silently applied.
+    """
+    zone = request.app.state.zone
+    clean_title = title.strip()
+    if not clean_title:
+        return RedirectResponse("/add?error=Give+it+a+title", status_code=303)
+
+    if type not in entry.ASSIGNMENT_TYPES:
+        type = "other"
+
+    try:
+        due_at = entry.parse_when(due, zone)
+        est_hours = entry.parse_hours(hours)
+    except entry.EntryError as exc:
+        from urllib.parse import quote
+        return RedirectResponse(
+            f"/add?error={quote(str(exc))}&title={quote(clean_title)}", status_code=303
+        )
+
+    points_possible = None
+    if points.strip():
+        try:
+            points_possible = float(points)
+        except ValueError:
+            points_possible = None
+
+    conn = db.connect()
+    try:
+        cur = conn.execute(
+            "INSERT INTO assignments (course_id, title, type, due_at, start_by, "
+            "est_hours, est_hours_remaining, points_possible, status, source) "
+            "VALUES (?,?,?,?,?,?,?,?,'not_started','manual')",
+            (
+                int(course_id) if course_id else None,
+                clean_title[:300],
+                type,
+                due_at,
+                entry.start_by_for(due_at, est_hours, type),
+                est_hours,
+                est_hours,
+                points_possible,
+            ),
+        )
+        conn.execute(
+            "INSERT INTO audit_log (action, table_name, record_id, detail_json) "
+            "VALUES ('create', 'assignments', ?, ?)",
+            (cur.lastrowid, json.dumps({"title": clean_title[:300], "source": "manual"})),
+        )
+    finally:
+        conn.close()
+
+    return RedirectResponse("/", status_code=303)
+
+
+@app.get("/assignments/{assignment_id}/edit")
+def edit_form(assignment_id: int, request: Request, error: str | None = None):
+    conn = db.connect()
+    try:
+        row = conn.execute(
+            "SELECT * FROM assignments WHERE id = ?", (assignment_id,)
+        ).fetchone()
+        courses = _courses(conn)
+    finally:
+        conn.close()
+
+    if row is None:
+        raise HTTPException(status_code=404, detail="No such assignment")
+
+    zone = request.app.state.zone
+    due_local = ""
+    if row["due_at"]:
+        parsed = status.parse_timestamp(row["due_at"])
+        if parsed:
+            due_local = parsed.astimezone(zone).strftime("%Y-%m-%d %H:%M")
+
+    return templates.TemplateResponse(
+        request=request,
+        name="edit.html",
+        context={
+            "row": row,
+            "courses": courses,
+            "types": entry.ASSIGNMENT_TYPES,
+            "due_local": due_local,
+            "error": error,
+        },
+    )
+
+
+@app.post("/assignments/{assignment_id}/edit")
+def edit_assignment(
+    assignment_id: int,
+    request: Request,
+    title: str = Form(...),
+    course_id: str = Form(""),
+    type: str = Form("other"),
+    due: str = Form(""),
+    hours: str = Form(""),
+):
+    """Fill in what a captured note or an unmatched feed item was missing."""
+    zone = request.app.state.zone
+    clean_title = title.strip()
+    if not clean_title:
+        return RedirectResponse(
+            f"/assignments/{assignment_id}/edit?error=Give+it+a+title", status_code=303
+        )
+    if type not in entry.ASSIGNMENT_TYPES:
+        type = "other"
+
+    try:
+        due_at = entry.parse_when(due, zone)
+        est_hours = entry.parse_hours(hours)
+    except entry.EntryError as exc:
+        from urllib.parse import quote
+        return RedirectResponse(
+            f"/assignments/{assignment_id}/edit?error={quote(str(exc))}", status_code=303
+        )
+
+    conn = db.connect()
+    try:
+        existing = conn.execute(
+            "SELECT title, due_at FROM assignments WHERE id = ?", (assignment_id,)
+        ).fetchone()
+        if existing is None:
+            raise HTTPException(status_code=404, detail="No such assignment")
+
+        conn.execute("BEGIN")
+        conn.execute(
+            "UPDATE assignments SET title = ?, course_id = ?, type = ?, due_at = ?, "
+            "start_by = ?, est_hours = ?, est_hours_remaining = ? WHERE id = ?",
+            (
+                clean_title[:300],
+                int(course_id) if course_id else None,
+                type,
+                due_at,
+                entry.start_by_for(due_at, est_hours, type),
+                est_hours,
+                est_hours,
+                assignment_id,
+            ),
+        )
+        if existing["due_at"] != due_at:
+            # SPEC §5: a changed deadline supersedes pending reminders rather than
+            # moving them, the same rule ingestion follows.
+            conn.execute(
+                "UPDATE reminder_instances SET state = 'superseded' "
+                "WHERE assignment_id = ? AND state = 'pending'",
+                (assignment_id,),
+            )
+        conn.execute(
+            "INSERT INTO audit_log (action, table_name, record_id, detail_json) "
+            "VALUES ('edit', 'assignments', ?, ?)",
+            (assignment_id, json.dumps({"title": clean_title[:300], "due_at": due_at})),
+        )
+        conn.execute("COMMIT")
+    finally:
+        conn.close()
+
+    return RedirectResponse("/", status_code=303)
+
+
+# --- pasting a syllabus -----------------------------------------------------
+
+
+@app.get("/batch")
+def batch_form(request: Request):
+    conn = db.connect()
+    try:
+        courses = _courses(conn)
+    finally:
+        conn.close()
+    return templates.TemplateResponse(
+        request=request,
+        name="batch.html",
+        context={"courses": courses, "lines": None, "pasted": "", "course_id": ""},
+    )
+
+
+@app.post("/batch")
+def batch_preview(request: Request, pasted: str = Form(""), course_id: str = Form("")):
+    """Show what a pasted syllabus would become, before saving any of it.
+
+    Nothing is written here. The preview is re-parsed from the same text on save,
+    so what is shown and what is stored cannot drift apart.
+    """
+    zone = request.app.state.zone
+    conn = db.connect()
+    try:
+        courses = _courses(conn)
+    finally:
+        conn.close()
+
+    # Dates are shown in Mason's own timezone, not as the stored UTC. A deadline
+    # of 23:59 local is 03:59 the next day in UTC, so echoing the stored string
+    # back would show a different date from the one he typed.
+    previewed = []
+    for line in entry.parse_batch(pasted, zone):
+        when = status.parse_timestamp(line.due_at)
+        previewed.append({
+            "line": line,
+            "due_display": when.astimezone(zone).strftime("%a %-d %b %Y") if when else None,
+        })
+
+    return templates.TemplateResponse(
+        request=request,
+        name="batch.html",
+        context={
+            "courses": courses,
+            "lines": previewed,
+            "pasted": pasted,
+            "course_id": course_id,
+        },
+    )
+
+
+@app.post("/batch/save")
+def batch_save(request: Request, pasted: str = Form(""), course_id: str = Form("")):
+    """Save the readable lines. Lines with errors are left for another attempt."""
+    zone = request.app.state.zone
+    lines = [line for line in entry.parse_batch(pasted, zone) if line.ok]
+    if not lines:
+        return RedirectResponse("/batch", status_code=303)
+
+    conn = db.connect()
+    try:
+        conn.execute("BEGIN")
+        for line in lines:
+            cur = conn.execute(
+                "INSERT INTO assignments (course_id, title, type, due_at, start_by, "
+                "est_hours, est_hours_remaining, status, source) "
+                "VALUES (?,?,?,?,?,?,?,'not_started','syllabus_batch')",
+                (
+                    int(course_id) if course_id else None,
+                    line.title,
+                    line.type,
+                    line.due_at,
+                    entry.start_by_for(line.due_at, line.est_hours, line.type),
+                    line.est_hours,
+                    line.est_hours,
+                ),
+            )
+            conn.execute(
+                "INSERT INTO audit_log (action, table_name, record_id, detail_json) "
+                "VALUES ('syllabus_batch', 'assignments', ?, ?)",
+                (cur.lastrowid, json.dumps({"title": line.title})),
+            )
+        conn.execute("COMMIT")
+    finally:
+        conn.close()
+
+    log.info("Added %d assignments from a pasted syllabus.", len(lines))
+    return RedirectResponse("/", status_code=303)
+
+
+# --- courses ----------------------------------------------------------------
+
+
+@app.get("/courses")
+def courses_page(request: Request):
+    conn = db.connect()
+    try:
+        rows = conn.execute(
+            """
+            SELECT c.*, COUNT(a.id) AS assignment_count
+            FROM courses c
+            LEFT JOIN assignments a ON a.course_id = c.id
+            GROUP BY c.id
+            ORDER BY c.needs_naming DESC, c.name
+            """
+        ).fetchall()
+    finally:
+        conn.close()
+
+    return templates.TemplateResponse(
+        request=request, name="courses.html", context={"courses": rows}
+    )
+
+
+@app.post("/courses")
+def create_course(
+    request: Request,
+    name: str = Form(...),
+    code: str = Form(""),
+    instructor: str = Form(""),
+    meeting_pattern: str = Form(""),
+    credits: str = Form(""),
+    late_policy: str = Form(""),
+):
+    """Add a course Canvas knows nothing about.
+
+    Only a name is required. The rest matters to M6's overload mode, which ranks
+    what is cheapest to sacrifice, and can be filled in whenever the syllabus is
+    to hand.
+    """
+    clean_name = name.strip()
+    if not clean_name:
+        return RedirectResponse("/courses", status_code=303)
+
+    conn = db.connect()
+    try:
+        conn.execute(
+            "INSERT INTO courses (term_id, name, code, instructor, meeting_pattern, "
+            "credits, late_policy, needs_naming) VALUES (?,?,?,?,?,?,?,0)",
+            (
+                _default_term_id(conn),
+                clean_name[:200],
+                code.strip()[:60] or None,
+                instructor.strip()[:120] or None,
+                meeting_pattern.strip()[:120] or None,
+                float(credits) if credits.strip().replace(".", "", 1).isdigit() else None,
+                late_policy.strip()[:500] or None,
+            ),
+        )
+    finally:
+        conn.close()
+
+    return RedirectResponse("/courses", status_code=303)
+
+
+@app.post("/courses/{course_id}/edit")
+def edit_course(
+    course_id: int,
+    request: Request,
+    name: str = Form(...),
+    code: str = Form(""),
+    instructor: str = Form(""),
+    meeting_pattern: str = Form(""),
+    credits: str = Form(""),
+    late_policy: str = Form(""),
+    current_grade_pct: str = Form(""),
+):
+    clean_name = name.strip()
+    if not clean_name:
+        return _back(request)
+
+    def number(text):
+        text = text.strip()
+        try:
+            return float(text) if text else None
+        except ValueError:
+            return None
+
+    grade = number(current_grade_pct)
+    if grade is not None and not 0 <= grade <= 100:
+        grade = None
+
+    conn = db.connect()
+    try:
+        conn.execute(
+            "UPDATE courses SET name = ?, code = ?, instructor = ?, meeting_pattern = ?, "
+            "credits = ?, late_policy = ?, current_grade_pct = ?, needs_naming = 0 "
+            "WHERE id = ?",
+            (
+                clean_name[:200],
+                code.strip()[:60] or None,
+                instructor.strip()[:120] or None,
+                meeting_pattern.strip()[:120] or None,
+                number(credits),
+                late_policy.strip()[:500] or None,
+                grade,
+                course_id,
+            ),
+        )
+    finally:
+        conn.close()
+
     return _back(request)
 
 

@@ -36,8 +36,9 @@
 
 {% block subheading %}
   <p class="muted">
-    {{ now_display }} · <a href="/assignments">Everything</a> ·
-    <a href="/status">Status</a>
+    {{ now_display }} · <a href="/add">Add work</a> ·
+    <a href="/batch">Paste a syllabus</a> · <a href="/courses">Courses</a> ·
+    <a href="/assignments">Everything</a> · <a href="/status">Status</a>
   </p>
 {% endblock %}
 
@@ -121,6 +122,9 @@
         <div class="verdict {{ 'verdict-bad' if first.item.slack is not none and first.item.slack < 0 }}">
           {{ first.slack_text }}
         </div>
+        <div class="row-actions">
+          <a class="chip" href="/assignments/{{ first.item.id }}/edit">Edit</a>
+        </div>
         {{ status_buttons(first.item) }}
       </div>
 
@@ -157,13 +161,16 @@
     <section>
       <h2>Needs a date</h2>
       <p class="muted">
-        Captured, but with no deadline yet, so nothing can be worked out about them.
-        Setting dates arrives with the next piece of work.
+        Captured, but with no deadline yet, so nothing can be worked out about
+        them. Add a date and a length and they join the ranking.
       </p>
       <ul class="stack">
         {% for entry in no_due_date %}
           <li class="card">
             <div class="card-title">{{ entry.item.title }}</div>
+            <div class="row-actions">
+              <a class="chip" href="/assignments/{{ entry.item.id }}/edit">Add details</a>
+            </div>
             {{ status_buttons(entry.item) }}
           </li>
         {% endfor %}

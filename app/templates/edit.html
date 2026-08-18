@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+
+{% block title %}Edit — Semester Dashboard{% endblock %}
+{% block heading %}Edit{% endblock %}
+
+{% block subheading %}
+  <p class="muted"><a href="/">Today</a></p>
+{% endblock %}
+
+{% block content %}
+
+  {% if error %}
+    <div class="banner banner-bad">{{ error }}</div>
+  {% endif %}
+
+  <form method="post" action="/assignments/{{ row.id }}/edit" class="form">
+    <label><span>What is it?</span>
+      <input type="text" name="title" value="{{ row.title }}" required></label>
+
+    <label><span>Course</span>
+      <select name="course_id">
+        <option value="">No course</option>
+        {% for course in courses %}
+          <option value="{{ course.id }}" {% if course.id == row.course_id %}selected{% endif %}>
+            {{ course.name }}
+          </option>
+        {% endfor %}
+      </select>
+    </label>
+
+    <label><span>Kind of work</span>
+      <select name="type">
+        {% for t in types %}
+          <option value="{{ t }}" {% if t == row.type %}selected{% endif %}>{{ t }}</option>
+        {% endfor %}
+      </select>
+    </label>
+
+    <label><span>Due</span>
+      <input type="text" name="due" value="{{ due_local }}" autocomplete="off"
+             placeholder="2026-09-08, 9/8, or Sep 8 2pm">
+      <small class="muted">Clear it to remove the deadline.</small>
+    </label>
+
+    <label><span>How long will it take?</span>
+      <input type="text" name="hours" autocomplete="off"
+             value="{{ '%g' % row.est_hours_remaining if row.est_hours_remaining is not none else ('%g' % row.est_hours if row.est_hours is not none else '') }}"
+             placeholder="2h, 90m, 1.5"></label>
+
+    <button type="submit">Save</button>
+  </form>
+
+  {% if row.source == 'ics' %}
+    <p class="muted footnote">
+      This one came from Canvas. Changes here are yours and stay, but the title and
+      due date are replaced if they change in Canvas — that is the point of the
+      feed.
+    </p>
+  {% endif %}
+
+{% endblock %}
