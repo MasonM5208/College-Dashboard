@@ -15,16 +15,17 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from fastapi import FastAPI, Form, HTTPException, Request
-from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
-from app import canvas, config, db, entry, migrate, priority, scheduler, status
+from app import canvas, claude_chat, config, db, entry, migrate, priority, scheduler, status
 
 log = logging.getLogger("dashboard")
 
@@ -857,6 +858,182 @@ def edit_course(
         conn.close()
 
     return _back(request)
+
+
+
+# --- chat -------------------------------------------------------------------
+#
+# SPEC §10: one endpoint, tool-based routing, no intent classifier. Whether a
+# question is about deadlines or about coursework is Claude's decision, made by
+# choosing a tool, not ours made by inspecting the text.
+
+
+def _thread_messages(conn, thread_id: int):
+    return conn.execute(
+        "SELECT * FROM chat_messages WHERE thread_id = ? ORDER BY id", (thread_id,)
+    ).fetchall()
+
+
+def _history_for_model(rows) -> list[dict]:
+    """The conversation so far, in the shape the API expects.
+
+    Only the user and assistant text is replayed. Tool calls and their results are
+    kept in the database for auditing, but a finished exchange does not need them
+    re-sent — the answer already reflects what they returned.
+    """
+    history = []
+    for row in rows:
+        if row["role"] == "user" and row["content"]:
+            history.append({"role": "user", "content": row["content"]})
+        elif row["role"] == "assistant" and row["content"]:
+            history.append({"role": "assistant", "content": row["content"]})
+    return history
+
+
+@app.get("/chat")
+def chat_page(request: Request, thread: int | None = None):
+    conn = db.connect()
+    try:
+        threads = conn.execute(
+            "SELECT id, title, updated_at FROM chat_threads ORDER BY updated_at DESC LIMIT 30"
+        ).fetchall()
+
+        thread_id = thread or (threads[0]["id"] if threads else None)
+        messages = _thread_messages(conn, thread_id) if thread_id else []
+        spend = claude_chat.month_to_date_cost(conn)
+        configured = bool(os.environ.get("CLAUDE_API_KEY", "").strip())
+    finally:
+        conn.close()
+
+    zone = request.app.state.zone
+    shown = [
+        {
+            "role": row["role"],
+            "content": row["content"],
+            "thinking": row["thinking"],
+            "when": local_time(row["created_at"], zone),
+            "tokens": row["input_tokens"] + row["output_tokens"],
+            "cost": claude_chat.message_cost(row),
+            "model": row["model"],
+        }
+        for row in messages
+        if row["role"] in ("user", "assistant")
+    ]
+
+    # Answer the newest question if it has not been answered yet — that is what
+    # the page's event stream connects to.
+    pending = bool(messages) and messages[-1]["role"] == "user"
+
+    return templates.TemplateResponse(
+        request=request,
+        name="chat.html",
+        context={
+            "threads": threads,
+            "thread_id": thread_id,
+            "messages": shown,
+            "pending": pending,
+            "spend": spend,
+            "configured": configured,
+            "model": config.CHAT_MODEL,
+        },
+    )
+
+
+@app.post("/chat/send")
+def chat_send(request: Request, question: str = Form(...), thread: str = Form("")):
+    text = question.strip()
+    if not text:
+        return RedirectResponse("/chat", status_code=303)
+
+    conn = db.connect()
+    try:
+        thread_id = int(thread) if thread.strip().isdigit() else None
+        if thread_id is None:
+            cur = conn.execute(
+                "INSERT INTO chat_threads (title) VALUES (?)", (text[:80],)
+            )
+            thread_id = int(cur.lastrowid)
+
+        conn.execute(
+            "INSERT INTO chat_messages (thread_id, role, content) VALUES (?, 'user', ?)",
+            (thread_id, text[:8000]),
+        )
+    finally:
+        conn.close()
+
+    return RedirectResponse(f"/chat?thread={thread_id}", status_code=303)
+
+
+@app.get("/chat/{thread_id}/stream")
+def chat_stream(thread_id: int, request: Request):
+    """Answer the newest question, streaming the reply as it is written.
+
+    Server-sent events. Streaming is not only for appearance: it is also what
+    stops a long answer from hitting an HTTP timeout.
+    """
+    zone = request.app.state.zone
+
+    def events():
+        conn = db.connect()
+        try:
+            rows = _thread_messages(conn, thread_id)
+            if not rows or rows[-1]["role"] != "user":
+                yield "event: done\ndata: {}\n\n"
+                return
+
+            history = _history_for_model(rows)
+            turn = None
+            try:
+                for kind, payload in claude_chat.answer(conn, history, zone):
+                    if kind == "done":
+                        turn = payload
+                    else:
+                        yield f"event: {kind}\ndata: {json.dumps(payload)}\n\n"
+            except claude_chat.ChatUnavailable as exc:
+                yield f"event: failed\ndata: {json.dumps(str(exc))}\n\n"
+                return
+            except Exception as exc:  # noqa: BLE001
+                log.exception("Chat request failed")
+                # The message is deliberately generic: an API error can quote the
+                # request, and the request carries the key.
+                yield (
+                    "event: failed\ndata: "
+                    + json.dumps(
+                        "Something went wrong talking to Claude. The server log has "
+                        "the detail."
+                    )
+                    + "\n\n"
+                )
+                return
+
+            conn.execute(
+                "INSERT INTO chat_messages (thread_id, role, content, thinking, "
+                "tool_calls, tool_results, model, stop_reason, input_tokens, "
+                "output_tokens, cache_read_tokens, cache_write_tokens) "
+                "VALUES (?, 'assistant', ?,?,?,?,?,?,?,?,?,?)",
+                (
+                    thread_id,
+                    turn.text,
+                    turn.thinking or None,
+                    json.dumps(turn.tool_calls) if turn.tool_calls else None,
+                    json.dumps(turn.tool_results) if turn.tool_results else None,
+                    turn.model,
+                    turn.stop_reason,
+                    turn.input_tokens,
+                    turn.output_tokens,
+                    turn.cache_read_tokens,
+                    turn.cache_write_tokens,
+                ),
+            )
+            yield "event: done\ndata: {}\n\n"
+        finally:
+            conn.close()
+
+    return StreamingResponse(
+        events(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
 
 
 @app.get("/assignments")

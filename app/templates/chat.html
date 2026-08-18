@@ -1,0 +1,148 @@
+{% extends "base.html" %}
+
+{% block title %}Ask — Semester Dashboard{% endblock %}
+{% block heading %}Ask{% endblock %}
+
+{% block subheading %}
+  <p class="muted">
+    <a href="/">Today</a> · <a href="/assignments">Everything</a> ·
+    <a href="/status">Status</a>
+  </p>
+{% endblock %}
+
+{% block content %}
+
+  {% if not configured %}
+    <div class="banner banner-bad">
+      <strong>Chat is not switched on.</strong>
+      Add <code>CLAUDE_API_KEY</code> to the secrets file on the server and restart.
+      See <code>docs/SETUP.md</code> section 15.
+    </div>
+  {% endif %}
+
+  <form method="post" action="/chat/send" class="capture">
+    <input type="text" name="question" placeholder="Ask anything — deadlines, coursework, whatever"
+           autocomplete="off" aria-label="Your question" autofocus>
+    <input type="hidden" name="thread" value="{{ thread_id or '' }}">
+    <button type="submit">Ask</button>
+  </form>
+
+  <section>
+    <ul class="stack" id="conversation">
+      {% for message in messages %}
+        <li class="card {{ 'card-asked' if message.role == 'user' else 'card-answer' }}">
+          <div class="muted speaker">{{ 'You' if message.role == 'user' else 'Claude' }}
+            · {{ message.when }}</div>
+          {% if message.thinking %}
+            <details class="thinking">
+              <summary class="muted">Reasoning</summary>
+              <div class="thinking-body">{{ message.thinking }}</div>
+            </details>
+          {% endif %}
+          <div class="answer-text">{{ message.content }}</div>
+          {% if message.role == 'assistant' and message.tokens %}
+            <div class="muted cost-line">
+              {{ message.tokens }} tokens · ${{ '%.4f' % message.cost }} · {{ message.model }}
+            </div>
+          {% endif %}
+        </li>
+      {% endfor %}
+
+      {# Filled in by the event stream while the answer is being written. #}
+      <li class="card card-answer" id="live" hidden>
+        <div class="muted speaker">Claude</div>
+        <details class="thinking" id="live-thinking" hidden>
+          <summary class="muted">Reasoning</summary>
+          <div class="thinking-body" id="live-thinking-body"></div>
+        </details>
+        <div class="answer-text" id="live-text"></div>
+        <div class="muted cost-line" id="live-status">Thinking…</div>
+      </li>
+    </ul>
+
+    {% if not messages %}
+      <p class="muted">
+        Nothing asked yet. It knows your courses, what is due in the next two weeks,
+        and how much spare time you have before each deadline — and it will answer
+        ordinary questions too.
+      </p>
+    {% endif %}
+  </section>
+
+  {% if threads %}
+    <section>
+      <h2>Earlier conversations</h2>
+      <ul class="stack">
+        {% for item in threads %}
+          <li class="card {{ 'card-quiet' if item.id != thread_id }}">
+            <a href="/chat?thread={{ item.id }}">{{ item.title or 'Untitled' }}</a>
+          </li>
+        {% endfor %}
+      </ul>
+    </section>
+  {% endif %}
+
+  <section>
+    <h2>What this costs</h2>
+    <p class="muted">
+      ${{ '%.2f' % spend.dollars }} so far this month, across
+      {{ spend.messages }} message{{ '' if spend.messages == 1 else 's' }}, using
+      {{ model }}.
+      {%- if spend.cache_read_tokens %}
+        {{ spend.cache_read_tokens }} tokens were served from cache at about a tenth
+        of the usual price.
+      {%- endif %}
+    </p>
+  </section>
+
+  <script>
+    // Connects to the event stream when the newest message is a question with no
+    // answer yet. Plain EventSource — no framework, same as the rest of the app.
+    (function () {
+      if (!{{ 'true' if pending else 'false' }}) { return; }
+
+      var live = document.getElementById('live');
+      var text = document.getElementById('live-text');
+      var status = document.getElementById('live-status');
+      var thinkingBox = document.getElementById('live-thinking');
+      var thinking = document.getElementById('live-thinking-body');
+      live.hidden = false;
+
+      var source = new EventSource('/chat/{{ thread_id }}/stream');
+
+      source.addEventListener('text', function (event) {
+        status.textContent = '';
+        text.textContent += JSON.parse(event.data);
+        window.scrollTo(0, document.body.scrollHeight);
+      });
+
+      source.addEventListener('thinking', function (event) {
+        thinkingBox.hidden = false;
+        thinking.textContent += JSON.parse(event.data);
+      });
+
+      source.addEventListener('tool', function (event) {
+        status.textContent = 'Looking up ' + JSON.parse(event.data).replace('get_', '') + '…';
+      });
+
+      source.addEventListener('failed', function (event) {
+        status.textContent = JSON.parse(event.data);
+        status.classList.add('verdict-bad');
+        source.close();
+      });
+
+      source.addEventListener('done', function () {
+        source.close();
+        // Reload so the answer is rendered from the database rather than left
+        // as ephemeral page state — refreshing must not lose it.
+        window.location.reload();
+      });
+
+      source.onerror = function () {
+        status.textContent = 'Lost the connection. Reload to see if the answer saved.';
+        source.close();
+      };
+    })();
+  </script>
+
+{% endblock %}

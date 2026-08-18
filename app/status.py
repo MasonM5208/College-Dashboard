@@ -141,10 +141,13 @@ def collect(conn: sqlite3.Connection, now: datetime | None = None) -> dict:
         "migrations_up_to_date": not outstanding,
     }
 
+    from app import claude_chat
+
     return {
         "ok": all(checks.values()),
         "checks": checks,
         "ingest": ingest_summary(conn),
+        "chat_spend": claude_chat.month_to_date_cost(conn, now),
         "schema_version": migrate.current_version(conn),
         "pending_migrations": outstanding,
         "database_path": str(config.DB_PATH),

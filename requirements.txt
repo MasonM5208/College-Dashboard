@@ -13,3 +13,7 @@ jinja2==3.1.6
 # Required by FastAPI to read HTML form submissions. The Today view's buttons are
 # plain forms rather than JavaScript, so every one-tap action goes through this.
 python-multipart==0.0.32
+
+# The official Anthropic SDK, for the chat layer. SPEC §4 settles this: Claude API
+# only, no local model and no provider abstraction.
+anthropic==0.122.0

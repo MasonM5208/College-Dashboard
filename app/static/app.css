@@ -322,3 +322,32 @@ a.chip {
 /* Each course on the courses page is its own form; a rule between them keeps
    the fields from reading as one long list. */
 .form-compact + h2 { border-top: 1px solid var(--border); padding-top: 1.5rem; }
+
+/* ---- chat --------------------------------------------------------------- */
+
+.card-asked { border-left: 3px solid var(--border); }
+.card-answer { border-left: 3px solid var(--accent); }
+
+.speaker { font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.06em; }
+
+/* Answers arrive as plain text with real line breaks; preserve them without
+   letting a long unbroken string push the page sideways on a phone. */
+.answer-text {
+  margin-top: 0.35rem;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.thinking { margin-top: 0.4rem; }
+.thinking summary { cursor: pointer; font-size: 0.82rem; }
+
+.thinking-body {
+  margin-top: 0.4rem;
+  padding-left: 0.7rem;
+  border-left: 2px solid var(--border);
+  color: var(--text-muted);
+  font-size: 0.88rem;
+  white-space: pre-wrap;
+}
+
+.cost-line { margin-top: 0.5rem; font-size: 0.78rem; }

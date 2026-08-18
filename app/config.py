@@ -27,6 +27,16 @@ DB_PATH = Path(os.environ.get("DB_PATH", "/data/dashboard.db"))
 # Display timezone only. Everything stored in SQLite is UTC.
 TZ = os.environ.get("TZ", "UTC")
 
+# Which Claude model answers questions. Settable so that dropping from Opus to
+# Sonnet — roughly half the price per token — is a line in the secrets file and a
+# restart, not a code change. SPEC §4 forbids a provider abstraction; this is not
+# one, it is the same API with a different model string.
+CHAT_MODEL = os.environ.get("CHAT_MODEL", "claude-opus-5").strip() or "claude-opus-5"
+
+# How hard the model works before answering. The API default is "high"; "medium"
+# is the lever to pull if replies cost more than they are worth.
+CHAT_EFFORT = os.environ.get("CHAT_EFFORT", "high").strip() or "high"
+
 
 class MissingSetting(RuntimeError):
     """A required environment variable is absent or empty."""
