@@ -56,6 +56,10 @@ NS = {"d": DAV, "c": CALDAV}
 # deadline changed in the morning reaches the phone the same morning.
 SYNC_INTERVAL_SECONDS = 15 * 60
 
+# Stamped onto the cached collection address. Bumping it discards addresses chosen
+# by an older discovery rule instead of trusting them.
+CURSOR_VERSION = "v2:"
+
 
 class CalDavError(RuntimeError):
     """A push failed. The message is always safe to display and to store."""
@@ -118,7 +122,20 @@ def _request(
         if exc.code == 404 and method == "DELETE":
             # Already gone. Withdrawing something twice is not a failure.
             return 404, ""
-        raise CalDavError(_http_message(exc.code, method)) from None
+
+        # Apple explains a rejected write in the response body, naming the
+        # precondition that failed. That is the difference between "HTTP 400" and
+        # a fixable sentence, and the body is server-generated XML with no
+        # credentials in it — unlike the exception's own string, which quotes the
+        # request.
+        detail = ""
+        try:
+            body = exc.read().decode("utf-8", errors="replace").strip()
+            if body:
+                detail = " " + " ".join(body.split())[:400]
+        except Exception:
+            pass
+        raise CalDavError(_http_message(exc.code, method) + detail) from None
     except urllib.error.URLError:
         raise CalDavError(
             "Could not reach the reminders server. The server may be offline, or "
@@ -165,11 +182,23 @@ _PROPFIND_COLLECTIONS = """<?xml version="1.0" encoding="utf-8"?>
 </d:propfind>"""
 
 
+# iCloud publishes scheduling collections in the same calendar home as the real
+# lists. They advertise component support and then reject every write, which is
+# how a discovery that only checks components ends up with 400 on every PUT.
+SCHEDULING_COLLECTIONS = ("inbox", "outbox", "notification", "dropbox")
+
+
 @dataclass
 class Collection:
     url: str
     name: str
     accepts_todos: bool
+    is_calendar: bool = False
+    reason: str = ""
+
+    @property
+    def usable(self) -> bool:
+        return self.accepts_todos and self.is_calendar and not self.reason
 
 
 def _absolute(base: str, href: str) -> str:
@@ -223,28 +252,50 @@ def discover(url: str, username: str, password: str, trace=None) -> str:
         ]
         if not components:
             continue
+
+        path = href.text.strip()
+        # A real list is a CalDAV calendar. Anything else advertising component
+        # support is a scheduling endpoint and will refuse to be written to.
+        is_calendar = response.find(".//d:resourcetype/c:calendar", NS) is not None
+        reason = ""
+        if not is_calendar:
+            reason = "not a calendar collection"
+        elif any(part in path.lower().split("/") for part in SCHEDULING_COLLECTIONS):
+            reason = "a scheduling collection, not a list"
+
         collections.append(
             Collection(
-                url=_absolute(home, href.text.strip()),
+                url=_absolute(home, path),
                 name=(name.text if name is not None and name.text else "(unnamed)"),
                 accepts_todos="VTODO" in components,
+                is_calendar=is_calendar,
+                reason=reason,
             )
         )
 
-    say("step 4", f"found {len(collections)} calendar(s):")
+    say("step 4", f"found {len(collections)} collection(s):")
     for collection in collections:
-        mark = "accepts reminders" if collection.accepts_todos else "calendar events only"
+        if collection.usable:
+            mark = "accepts reminders"
+        elif collection.reason:
+            mark = f"skipped — {collection.reason}"
+        else:
+            mark = "calendar events only"
         say("       ", f"{collection.name} — {mark}")
 
-    usable = [c for c in collections if c.accepts_todos]
+    usable = [c for c in collections if c.usable]
     if not usable:
         raise CalDavError(
-            "The account has calendars but none of them accept reminders. In the "
-            "Reminders app on your iPhone, make sure at least one list is stored in "
-            "iCloud rather than 'On My iPhone'."
+            "The account has calendars but none of them is a reminders list that can "
+            "be written to. In the Reminders app on your iPhone, make sure at least "
+            "one list is stored in iCloud rather than 'On My iPhone'."
         )
 
-    chosen = usable[0]
+    # Several lists can qualify. Prefer the one actually called Reminders, so the
+    # to-dos land where he would look for them rather than in whichever came first.
+    chosen = next(
+        (c for c in usable if "reminder" in c.name.lower()), usable[0]
+    )
     say("step 5", f"will write to: {chosen.name}")
     return chosen.url
 
@@ -256,17 +307,21 @@ def collection_url(conn: sqlite3.Connection, username: str, password: str, url: 
     used until now. Rediscovering on every run would be four extra requests every
     fifteen minutes for an answer that never changes.
     """
+    # The stored value carries the version of the rule that chose it. When that
+    # rule changes — as it did after discovery started rejecting scheduling
+    # collections — an address cached under the old one is silently wrong, and
+    # re-discovering is cheaper than asking anyone to clear it by hand.
     row = conn.execute(
         "SELECT cursor FROM sync_state WHERE source = ?", (SOURCE,)
     ).fetchone()
-    if row and row["cursor"]:
-        return row["cursor"]
+    if row and row["cursor"] and row["cursor"].startswith(CURSOR_VERSION):
+        return row["cursor"][len(CURSOR_VERSION):]
 
     found = discover(url, username, password)
     conn.execute(
         "INSERT INTO sync_state (source, cursor) VALUES (?, ?) "
         "ON CONFLICT(source) DO UPDATE SET cursor = excluded.cursor",
-        (SOURCE, found),
+        (SOURCE, CURSOR_VERSION + found),
     )
     return found
 

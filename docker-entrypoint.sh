@@ -6,6 +6,14 @@
 # its log, instead of starting a web server on top of a schema that is wrong.
 set -e
 
+# Anything passed after the image name is a command to run instead of the web
+# server — `docker compose run --rm app python -m app.caldav_push --probe`, for
+# example. Without this the arguments are ignored and a second copy of the server
+# starts, which is confusing and does real work nobody asked for.
+if [ "$#" -gt 0 ]; then
+  exec "$@"
+fi
+
 echo "[entrypoint] Applying any pending database migrations ..."
 python -m app.migrate
 

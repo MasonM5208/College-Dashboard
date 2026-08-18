@@ -31,14 +31,31 @@ HOME_XML = """<?xml version="1.0"?>
 <c:calendar-home-set><d:href>/12345/calendars/</d:href></c:calendar-home-set>
 </d:prop></d:propstat></d:response></d:multistatus>"""
 
+# Shaped like iCloud's real answer, including the scheduling inbox — which
+# advertises VTODO support and rejects every write. Discovery picking that is what
+# produced HTTP 400 on the first real deployment.
 COLLECTIONS_XML = """<?xml version="1.0"?>
 <d:multistatus xmlns:d="DAV:" xmlns:c="urn:ietf:params:xml:ns:caldav">
+  <d:response><d:href>/12345/calendars/inbox/</d:href><d:propstat><d:prop>
+    <d:displayname>Inbox</d:displayname>
+    <d:resourcetype><d:collection/><c:schedule-inbox/></d:resourcetype>
+    <c:supported-calendar-component-set>
+      <c:comp name="VEVENT"/><c:comp name="VTODO"/>
+    </c:supported-calendar-component-set>
+  </d:prop></d:propstat></d:response>
   <d:response><d:href>/12345/calendars/home/</d:href><d:propstat><d:prop>
     <d:displayname>Home</d:displayname>
+    <d:resourcetype><d:collection/><c:calendar/></d:resourcetype>
     <c:supported-calendar-component-set><c:comp name="VEVENT"/></c:supported-calendar-component-set>
+  </d:prop></d:propstat></d:response>
+  <d:response><d:href>/12345/calendars/tasks/</d:href><d:propstat><d:prop>
+    <d:displayname>Groceries</d:displayname>
+    <d:resourcetype><d:collection/><c:calendar/></d:resourcetype>
+    <c:supported-calendar-component-set><c:comp name="VTODO"/></c:supported-calendar-component-set>
   </d:prop></d:propstat></d:response>
   <d:response><d:href>/12345/calendars/reminders/</d:href><d:propstat><d:prop>
     <d:displayname>Reminders</d:displayname>
+    <d:resourcetype><d:collection/><c:calendar/></d:resourcetype>
     <c:supported-calendar-component-set><c:comp name="VTODO"/></c:supported-calendar-component-set>
   </d:prop></d:propstat></d:response>
 </d:multistatus>"""
@@ -140,6 +157,34 @@ def test_discovery_walks_to_the_list_that_accepts_reminders(server):
     assert "home" not in found
 
 
+def test_the_scheduling_inbox_is_never_chosen(server):
+    """The bug the first real deployment found.
+
+    iCloud's scheduling inbox sits in the same calendar home and advertises VTODO
+    support, then rejects every write with HTTP 400. Checking components alone is
+    not enough — it has to be a calendar collection.
+    """
+    found = caldav_push.discover("https://caldav.example.com", "mason@example.com", PASSWORD)
+    assert "inbox" not in found
+
+
+def test_the_list_actually_called_reminders_wins(server):
+    """Two lists qualify; the to-dos should land where he would look for them."""
+    found = caldav_push.discover("https://caldav.example.com", "mason@example.com", PASSWORD)
+    assert found.endswith("/reminders/")
+    assert "tasks" not in found
+
+
+def test_the_probe_says_why_a_collection_was_skipped(server):
+    """Naming the reason is the point — "found 4 calendars" alone explains nothing."""
+    steps = []
+    caldav_push.discover("https://caldav.example.com", "mason@example.com", PASSWORD,
+                         trace=lambda step, text: steps.append(text))
+    joined = " ".join(steps)
+    assert "Inbox" in joined
+    assert "skipped" in joined
+
+
 def test_discovery_reports_the_step_it_reached(server):
     steps = []
     caldav_push.discover("https://caldav.example.com", "mason@example.com", PASSWORD,
@@ -217,7 +262,7 @@ def test_special_characters_are_escaped(conn):
     reminders.generate_all(conn, INDIANA)
     assignment = caldav_push._pending_by_assignment(conn)[0]
     body = caldav_push.build_todo(assignment, [])
-    assert "\\," in body and "\;" in body
+    assert "\\," in body and r"\;" in body
     # And it survives a round trip through the reader.
     assert "Sec 2.8, 3.1-3.6; review" in ics.unescape(body)
 
@@ -366,6 +411,45 @@ def test_one_failed_todo_does_not_stop_the_others(conn, monkeypatch):
 
     assert result.pushed == 1
     assert len(result.failures) == 1
+
+
+def test_apples_explanation_reaches_the_error(conn, monkeypatch):
+    """HTTP 400 alone is not actionable; Apple names the precondition that failed."""
+    import io
+
+    def rejecting(request, timeout=None):
+        if request.get_method() == "PUT":
+            raise urllib.error.HTTPError(
+                request.full_url, 400, "Bad Request", {},
+                io.BytesIO(
+                    b'<?xml version="1.0"?><error xmlns="DAV:">'
+                    b'<valid-calendar-data xmlns="urn:ietf:params:xml:ns:caldav"/></error>'
+                ),
+            )
+        return FakeServer()(request, timeout)
+
+    monkeypatch.setattr(caldav_push.urllib.request, "urlopen", rejecting)
+    monkeypatch.setenv("CALDAV_URL", "https://caldav.example.com")
+    monkeypatch.setenv("CALDAV_USERNAME", "mason@example.com")
+    monkeypatch.setenv("CALDAV_PASSWORD", PASSWORD)
+    add(conn)
+
+    result = caldav_push.sync(conn, INDIANA)
+
+    assert result.pushed == 0
+    assert "valid-calendar-data" in result.failures[0]
+
+
+def test_a_collection_cached_under_an_older_rule_is_rediscovered(conn, server):
+    """The rule changed after a bad address had already been cached."""
+    conn.execute(
+        "INSERT INTO sync_state (source, cursor) VALUES ('caldav_push', ?)",
+        ("https://caldav.example.com/12345/calendars/inbox/",),
+    )
+    found = caldav_push.collection_url(conn, "m@example.com", PASSWORD,
+                                       "https://caldav.example.com")
+    assert "inbox" not in found
+    assert found.endswith("/reminders/")
 
 
 def test_missing_credentials_are_reported_by_name(conn, monkeypatch):
