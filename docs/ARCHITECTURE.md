@@ -252,6 +252,78 @@ under a restart loop.
 
 ---
 
+## Canvas ingestion (M1)
+
+`app/ics.py` parses, `app/canvas.py` fetches and reconciles, `app/scheduler.py`
+runs it every 30 minutes. The split is deliberate: the parser is pure functions
+with no network and no database, which is what makes the feed's quirks cheap to
+test.
+
+### What the real feed forced
+
+Design decisions here came from reading Mason's actual feed rather than the RFC:
+
+- **Unfold before anything else.** The feed has 330 continuation lines, and two of
+  twelve event titles wrap *inside the course code*. Line-oriented parsing yields
+  `[FA26-BL-MATH-`, matches no course, and quietly queues the event for review —
+  a failure that only affects events with long titles and produces no error.
+- **Parameters can repeat.** Canvas emits `DTSTART;VALUE=DATE;VALUE=DATE`. They are
+  kept as lists; overwriting silently would be a bug waiting for a feed that puts
+  something meaningful in the second one.
+- **Two date forms.** Bare `YYYYMMDD` for all-day items, `...Z` for timed ones.
+- **All-day means 23:59 local**, converted to UTC for storage. Confirmed with
+  Mason. It is what an assignment "due" on a date means to the person it is due
+  from, and 9am would show things as overdue that are not — SPEC §9 warns that
+  visibly wrong data ends trust in the whole ranking.
+
+### Rules that look like edge cases and are not
+
+- **Diff on UID.** Stable across polls, so a moved deadline is distinguishable from
+  a new assignment. SPEC §6.1.
+- **Never hard-delete.** An event that vanishes is marked with
+  `feed_missing_since`. A transient feed error and an unpublished assignment look
+  identical from here, and only one of them should cost data. SPEC §6.6.
+- **HTML is refused, not parsed as empty.** Canvas serves a web page when the feed
+  address is stale. Reading that as a calendar with zero events would mark every
+  assignment as vanished in one poll — the most destructive thing this code could
+  do, from the most ordinary cause.
+- **An unchanged event is not written.** Keeps `updated_at` meaning that something
+  changed, and keeps `audit_log` free of noise.
+- **A moved due date supersedes pending reminders** rather than mutating `fire_at`.
+  Nothing writes reminders until M3; doing it now means M3 does not start with
+  stale rows. SPEC §5.
+
+### The feed address is a credential
+
+Both `HTTPError` and `URLError` render the URL they failed on, and
+`sync_state.last_error` is displayed in the browser. Every error path substitutes a
+fixed description and suppresses the original with `raise ... from None`. Tests
+assert the token reaches neither the database nor the logs. SPEC §11.
+
+### Courses are created, not queued
+
+The feed identifies a course by an SIS code and carries no readable name. First
+sight of a code creates the course with the code as a placeholder name and
+`needs_naming = 1`, so assignments attach immediately rather than waiting in a
+queue for Mason. Creating a course requires a term, since `courses.term_id` is
+`NOT NULL`; the code's prefix names it (`FA26`) and its dates are seeded from the
+feed's own range with `needs_dates = 1`, because a guess must be labelled as one.
+
+### Estimated hours stay NULL at ingest
+
+SPEC §9 says the owner supplies them and warns that unexplained numbers destroy
+trust in the ranking. A per-type default at ingest would put numbers Mason never
+typed into the field the entire prioritisation engine reads. M2 prompts for them,
+which is where SPEC puts that interaction.
+
+### Polling lives in the app, backups live in cron
+
+The backup must survive a crash-looping container, because that is when last
+night's copy matters. Polling Canvas is meaningless when the app is down. Hence
+one in cron and one in an asyncio task, which looks inconsistent and is not.
+
+---
+
 ## Search: FTS5, no vectors
 
 Settled in SPEC §7, restated here because it is the question most likely to be

@@ -41,7 +41,19 @@ like.
 migrations, the status page, and nightly encrypted backups that have been
 restore-tested.
 
-Next: **M1**, pulling assignments from the Canvas calendar feed.
+**M1 — Canvas ingestion: built, awaiting confirmation against the live feed.** The
+Canvas calendar feed is polled every 30 minutes, parsed, and diffed on event UID:
+new assignments appear, moved deadlines are detected, events that vanish are
+flagged rather than deleted, and anything whose course cannot be identified is kept
+for review. Assignments are listed at `/assignments`.
+
+Two limitations worth knowing, both inherent to the feed rather than defects:
+courses arrive identified only by an enrolment code, and **only work with a due
+date set in Canvas appears at all**, so courses that do not use Canvas that way are
+invisible. See `SETUP.md` Section 14.
+
+Next: **M2**, the Today view — what to work on, ranked by how much time is actually
+free before each deadline rather than by which deadline is nearest.
 
 Build order and the acceptance criteria for each milestone are in [SPEC.md
 §12](SPEC.md).

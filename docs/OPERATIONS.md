@@ -285,6 +285,58 @@ The number 1000 is used rather than the name `mason` because it is the id the
 dashboard runs as inside the container, and that is what has to match. On a server
 set up by following `SETUP.md`, `mason` is id 1000 — confirm with `id mason`.
 
+### Canvas assignments have stopped arriving
+
+The status page shows **Canvas calendar feed** as `stale` or `failing`, or the
+assignment list has not changed in days.
+
+Check what the dashboard says happened:
+
+```
+sudo docker compose logs --tail 30 | grep -i canvas
+```
+
+Then force a check rather than waiting for the next one — open the dashboard and
+press **Check Canvas now** on the assignments page.
+
+The error shown on the status page names the cause:
+
+- **`Canvas refused the calendar feed address (HTTP 403)`** — the feed address was
+  reset in Canvas, which happens if you reset it deliberately or occasionally after
+  an institutional change. Get a new one from **Calendar → Calendar Feed** and
+  update `CANVAS_ICS_URL`. See `SETUP.md` Section 14.
+- **`Could not reach Canvas`** — the server has no network, or Canvas is down.
+  Check the server can reach the internet: `curl -s -o /dev/null -w '%{http_code}'
+  https://www.canvas.com`.
+- **`Canvas had a server problem`** — Canvas's own fault, and it usually clears
+  without help. The next check runs within 30 minutes.
+- **`This does not look like a calendar feed`** — Canvas served a web page instead
+  of a calendar, which means the address is no longer valid.
+
+**Assignments are not deleted while the feed is failing.** Everything already
+collected stays, and the status page reports how long it has been since the last
+success so stale data cannot be mistaken for current data.
+
+### An assignment says it disappeared from the feed
+
+The assignments page shows *Gone from the Canvas feed since ...* on an item.
+
+This means the assignment stopped appearing in Canvas's calendar. Usually a
+professor deleted or unpublished it, in which case nothing needs doing. But a
+temporary Canvas fault looks identical from here, so the dashboard marks the item
+and keeps it rather than deleting it — SPEC §6.6 is explicit that a transient feed
+error must never destroy data.
+
+Check the assignment in Canvas. If it really is gone, it can be dismissed from the
+dashboard once M2 adds that control; until then it stays visible and harmless.
+
+### Courses are named after enrolment codes
+
+The feed identifies courses only by an SIS code like `FA26-BL-MATH-M211-2050`, with
+no readable name anywhere in it. The first time a code appears, the dashboard
+creates the course using the code as a placeholder name and marks it as needing a
+real one. Renaming arrives with M2.
+
 ### A job says `stale` or `failing` on the dashboard
 
 `stale` means it has not succeeded recently enough. `failing` means it has failed

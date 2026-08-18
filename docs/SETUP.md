@@ -1594,6 +1594,125 @@ file.
 
 ---
 
+## Section 14 — Connect your Canvas calendar
+
+**What this does:** gives the dashboard the address of your Canvas calendar, so
+assignments arrive on their own every 30 minutes.
+
+**Why:** your institution has switched off Canvas API access, so this calendar feed
+is the only automatic source of anything. Everything the dashboard knows without
+you typing it comes through here.
+
+**Before you start:** Section 10 finished, with the dashboard running.
+
+**Time:** about 15 minutes.
+
+### Steps
+
+1. **In a web browser**, sign in to Canvas and open **Calendar** from the left-hand
+   menu.
+
+2. Scroll to the bottom of the right-hand sidebar, below the list of courses, and
+   look for a button labelled **Calendar Feed**. Clicking it opens a small box
+   containing a long web address ending in `.ics`.
+
+   If you cannot find the button, the sidebar may be collapsed on a narrow window.
+   Widen the browser window, or look for a link with the same name at the bottom of
+   the page.
+
+3. Copy that address.
+
+   > **Treat this address like a password.** It contains a token, and anybody who
+   > has it can read your entire academic schedule — every course, assignment and
+   > due date — without signing in, and without you being told. Do not paste it
+   > into a chat, an email, or any file inside the project folder. If it does get
+   > out, Section "Canvas feed address" of `docs/SECRETS.md` explains how to reset
+   > it.
+
+4. **On the server**, open the secrets file:
+
+   ```
+   ssh mason@100.92.147.61
+   ```
+
+   ```
+   hostname
+   ```
+
+   Confirm this prints your server's name, not your Mac's, before continuing.
+
+   ```
+   sudo nano /etc/college-dashboard/env
+   ```
+
+5. Add one line at the end, with your address after the `=` and no spaces around
+   it:
+
+   ```
+   CANVAS_ICS_URL=https://iu.instructure.com/feeds/calendars/user_EXAMPLETOKEN.ics
+   ```
+
+   Save and exit: `Control` and `O`, `Return`, `Control` and `X`.
+
+6. Restart so the dashboard picks up the new setting:
+
+   ```
+   cd /home/mason/College-Dashboard
+   ```
+
+   ```
+   sudo docker compose up -d
+   ```
+
+7. Watch the first check run. It happens a few seconds after startup:
+
+   ```
+   sudo docker compose logs --tail 20
+   ```
+
+   Expected — a line reporting what arrived:
+
+   ```
+   dashboard  | 2026-08-17T20:02:07-0400 INFO [scheduler] Canvas polling every 30 minutes.
+   dashboard  | 2026-08-17T20:02:12-0400 INFO [canvas] Canvas sync: 12 events: 12 new, 0 moved, 0 retitled, 0 vanished, 0 returned, 0 awaiting a course
+   ```
+
+### Troubleshooting
+
+- **`Canvas refused the calendar feed address (HTTP 403)`** — the address is wrong,
+  or it has been reset in Canvas since you copied it. Get it again from
+  **Calendar → Calendar Feed**.
+
+- **`Canvas has no calendar at that address (HTTP 404)`** — usually a partial copy.
+  The address is long; make sure you have all of it, ending in `.ics`.
+
+- **`This does not look like a calendar feed`** — Canvas returned a web page rather
+  than a calendar, which happens when the address has expired. Copy it again.
+
+- **`CANVAS_ICS_URL is not set`** — the line did not save, or has a space around the
+  `=`. Reopen the file and check.
+
+- **The log says nothing about Canvas at all** — the setting is missing entirely.
+  Confirm with `sudo grep -c CANVAS /etc/college-dashboard/env`, which should print
+  `1`.
+
+### Check before continuing
+
+Open the dashboard on your phone or laptop and tap **See them all**. Your Canvas
+assignments should be listed, grouped by course.
+
+Two things will look odd, and both are expected:
+
+- **Courses are named after enrolment codes** like `FA26-BL-MATH-M211-2050`.
+  Canvas puts no readable course name in the feed, so the code stands in until you
+  can rename it. That arrives with the next milestone.
+- **Most of your courses are missing.** Only work with a due date set in Canvas
+  appears. Courses that do not use Canvas that way — your music courses, most
+  likely — produce nothing at all. This list is a floor, not the full picture, and
+  entering the rest by hand is the next milestone's job.
+
+---
+
 ## You are finished
 
 The foundation is running:
