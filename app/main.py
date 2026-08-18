@@ -910,6 +910,13 @@ def chat_page(request: Request, thread: int | None = None):
         {
             "role": row["role"],
             "content": row["content"],
+            # Rendered here rather than in the template so the escaping rules live
+            # in one place. Questions stay plain text; only replies are Markdown.
+            "html": (
+                claude_chat.render_markdown(row["content"])
+                if row["role"] == "assistant"
+                else None
+            ),
             "thinking": row["thinking"],
             "when": local_time(row["created_at"], zone),
             "tokens": row["input_tokens"] + row["output_tokens"],

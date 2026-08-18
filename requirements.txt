@@ -17,3 +17,7 @@ python-multipart==0.0.32
 # The official Anthropic SDK, for the chat layer. SPEC §4 settles this: Claude API
 # only, no local model and no provider abstraction.
 anthropic==0.122.0
+
+# Renders Claude's replies. Pure Python, no build step, and raw HTML in the
+# source is escaped rather than passed through — see app/claude_chat.py.
+markdown-it-py==4.2.0

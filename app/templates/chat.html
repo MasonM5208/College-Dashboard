@@ -39,7 +39,12 @@
               <div class="thinking-body">{{ message.thinking }}</div>
             </details>
           {% endif %}
-          <div class="answer-text">{{ message.content }}</div>
+          {% if message.html %}
+            {# Markdown, rendered with raw HTML escaped by the renderer. #}
+            <div class="answer-text">{{ message.html | safe }}</div>
+          {% else %}
+            <div class="answer-text plain">{{ message.content }}</div>
+          {% endif %}
           {% if message.role == 'assistant' and message.tokens %}
             <div class="muted cost-line">
               {{ message.tokens }} tokens · ${{ '%.4f' % message.cost }} · {{ message.model }}
@@ -55,7 +60,7 @@
           <summary class="muted">Reasoning</summary>
           <div class="thinking-body" id="live-thinking-body"></div>
         </details>
-        <div class="answer-text" id="live-text"></div>
+        <div class="answer-text plain" id="live-text"></div>
         <div class="muted cost-line" id="live-status">Thinking…</div>
       </li>
     </ul>

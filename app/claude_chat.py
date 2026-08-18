@@ -29,6 +29,7 @@ from typing import Any, Iterator
 from zoneinfo import ZoneInfo
 
 import anthropic
+from markdown_it import MarkdownIt
 
 from app import config, priority
 
@@ -55,6 +56,21 @@ DEFAULT_PRICE = (5.00, 25.00)
 # cache at about one and a quarter times.
 CACHE_READ_MULTIPLIER = 0.1
 CACHE_WRITE_MULTIPLIER = 1.25
+
+
+# Replies come back as Markdown, so they have to be rendered rather than printed.
+# `html=False` makes the renderer escape any raw HTML in the text instead of
+# passing it through, which is what keeps model output from becoming markup on a
+# page. Links with a javascript: or similar scheme are dropped by the renderer's
+# own validation.
+_MARKDOWN = MarkdownIt("commonmark", {"html": False, "linkify": False})
+
+
+def render_markdown(text: str | None) -> str:
+    """Turn a reply into HTML that is safe to place on the page."""
+    if not text:
+        return ""
+    return _MARKDOWN.render(text)
 
 
 class ChatUnavailable(RuntimeError):
@@ -228,6 +244,19 @@ everything, say so and say which item is cheapest to drop, using late policies a
 current grades. Do not soften it and do not add cheerleading.
 - Answer general questions — coursework concepts, theory, writing, whatever he \
 asks — as fully as they deserve. You are his assistant, not only a schedule reader.
+
+How to format an answer:
+
+- Markdown is rendered, so **bold**, lists, headings and `code` all display \
+properly. Use them lightly — he is reading on a phone.
+- **Write mathematics as plain text, never as LaTeX.** There is no maths renderer \
+on this page, so `$x$`, `$$...$$`, `\\frac{a}{b}` and `\\lim` appear on screen as \
+literal backslashes and dollar signs. Use real characters instead: → ² ³ √ ∞ ≤ ≥ ≠ \
+± ∫ Σ π θ Δ. Write `lim(x→1)` rather than a LaTeX limit, `(x²−1)/(x−1)` rather than \
+a fraction macro, and `f'(x)` for a derivative. Put a displayed expression on its \
+own line, indented by four spaces so it renders as a code block and keeps its \
+alignment.
+- Keep tables small or skip them. A wide table is unreadable on a phone.
 
 What you do not have yet:
 

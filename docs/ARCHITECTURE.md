@@ -389,6 +389,27 @@ message, and padding it to clear the threshold would cost more than it returns.
 The breakpoint stays because it is free and starts paying when M4's archive rules
 grow the prompt past the minimum.
 
+### Replies are Markdown, and maths is not
+
+Two separate problems, found by reading a real answer rather than a test.
+
+Claude replies in Markdown, and the page rendered it as plain text — so a reply
+came out full of literal `**asterisks**`. Rendered now with `markdown-it-py`,
+configured with `html=False` so raw HTML in a reply is escaped rather than passed
+through, and links with a `javascript:` scheme are refused outright rather than
+sanitised. Questions stay plain text; only replies are rendered.
+
+Current models also default to **LaTeX** for anything mathematical, and there is
+no maths renderer here, so `$$\frac{x^2-1}{x-1}$$` reached the page as exactly
+that. The prompt now asks for plain characters — `lim(x→1)`, `(x²−1)/(x−1)`,
+`f'(x)` — with displayed expressions indented so they render as a scrollable block.
+
+Rejected: bundling KaTeX or MathJax. It is a few hundred kilobytes of JavaScript
+and a build step, on a 1 vCPU server, to typeset maths that reads perfectly well
+as `lim(x→1) (x²−1)/(x−1) = 2` — and better than tiny typeset fractions on a
+phone. Worth revisiting only if he starts asking things where notation genuinely
+carries the meaning.
+
 ### One source of truth for slack
 
 The `get_assignments` tool ranks through `app/priority.py` — the same code the

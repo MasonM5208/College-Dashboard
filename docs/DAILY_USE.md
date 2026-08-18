@@ -171,6 +171,13 @@ explain species counterpoint to me like I've forgotten the lecture
 The last one is not a mistake — it answers general questions as readily as
 schedule ones. There is no mode to switch.
 
+Answers come back formatted — bold, lists, headings, and indented blocks for
+anything that needs to keep its alignment. **Maths is written in plain characters**
+(`lim(x→1)`, `x²`, `f'(x)`) rather than typeset, because there is no maths renderer
+on the page and on a phone the plain version is easier to read anyway. If you ever
+see stray dollar signs or backslashes like `\frac`, that is the model slipping back
+into LaTeX — worth telling me, since the instruction is meant to prevent it.
+
 It will say **Reasoning** above longer answers; tap it to see how it worked
 something out. Below each answer is what that answer cost, and the bottom of the
 page shows the running total for the month.

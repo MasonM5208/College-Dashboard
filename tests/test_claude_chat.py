@@ -412,3 +412,63 @@ def test_the_stream_does_nothing_when_there_is_no_question(client, conn):
     conn.execute("INSERT INTO chat_threads (id, title) VALUES (1, 'x')")
     body = client.get("/chat/1/stream").text
     assert "event: done" in body
+
+
+# --- how replies are displayed ----------------------------------------------
+
+
+def test_markdown_is_rendered_not_shown_as_asterisks():
+    """Replies come back as Markdown; printing it raw shows the syntax."""
+    html = claude_chat.render_markdown("**Key idea:** limits\n\n- one\n- two")
+    assert "<strong>Key idea:</strong>" in html
+    assert "<li>one</li>" in html
+    assert "**" not in html
+
+
+def test_an_indented_expression_becomes_a_scrollable_block():
+    """Where displayed maths lands, now that LaTeX is out."""
+    html = claude_chat.render_markdown("Therefore:\n\n    lim(x→1) (x²−1)/(x−1) = 2\n")
+    assert "<pre>" in html
+    assert "lim(x→1)" in html
+
+
+def test_raw_html_in_a_reply_is_escaped_not_executed():
+    html = claude_chat.render_markdown("<script>alert(1)</script>")
+    assert "<script>" not in html
+    assert "&lt;script&gt;" in html
+
+
+def test_a_dangerous_link_never_becomes_a_link():
+    """The renderer refuses the href entirely and leaves the text."""
+    for source in ("[x](javascript:alert(1))", "[x](JaVaScRiPt:alert(1))"):
+        html = claude_chat.render_markdown(source)
+        assert "<a href" not in html
+    assert '<a href="https://example.com">' in claude_chat.render_markdown(
+        "[ok](https://example.com)"
+    )
+
+
+def test_the_prompt_forbids_latex_because_nothing_can_render_it():
+    """Current models default to LaTeX for maths; the page shows it literally."""
+    instructions = claude_chat.INSTRUCTIONS
+    assert "never as LaTeX" in instructions
+    assert "→" in instructions and "²" in instructions
+
+
+def test_a_question_is_shown_as_typed_and_an_answer_is_rendered(client, conn):
+    conn.execute("INSERT INTO chat_threads (id, title) VALUES (1, 'x')")
+    conn.execute(
+        "INSERT INTO chat_messages (thread_id, role, content) "
+        "VALUES (1, 'user', 'what is 2**3 in python?')"
+    )
+    conn.execute(
+        "INSERT INTO chat_messages (thread_id, role, content, model) "
+        "VALUES (1, 'assistant', '**Eight.** Use `2**3`.', 'claude-opus-5')"
+    )
+
+    body = client.get("/chat?thread=1").text
+
+    # The question keeps its asterisks; the answer has them turned into markup.
+    assert "what is 2**3 in python?" in body
+    assert "<strong>Eight.</strong>" in body
+    assert "<code>2**3</code>" in body
