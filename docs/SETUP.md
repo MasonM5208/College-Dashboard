@@ -43,6 +43,7 @@ it.
 | 13. Prove a backup can be restored | 20 minutes |
 | 14. Connect your Canvas calendar | 15 minutes |
 | 15. Turn on the chat | 15 minutes |
+| 16. Reminders on your phone | 20 minutes |
 
 About three hours in total, spread over as many sittings as you want.
 
@@ -70,6 +71,7 @@ Here is the full list, so you know what is coming. Do not fill it in yet.
 | 6 | Backblaze application key | Section 9 | **No.** Shown once. |
 | 7 | Canvas calendar feed address | Section 14 | Yes, from Canvas |
 | 8 | Claude API key | Section 15 | **No.** Shown once. |
+| 9 | Apple app-specific password | Section 16 | **No.** Shown once. |
 
 ---
 
@@ -1842,6 +1844,143 @@ CHAT_MODEL=claude-sonnet-5
 
 That switches to a cheaper model that is still very capable. Nothing else changes,
 and you can switch back the same way.
+
+---
+
+## Section 16 — Reminders on your phone
+
+**What this does:** puts your deadlines into Apple Reminders, so your phone nudges
+you at the right times without you opening anything.
+
+**Why this and not a notification from the dashboard itself:** a web notification
+on an iPhone needs the app installed to the home screen, a permission prompt, and
+a registration that **iOS quietly drops if you have not opened the app for a few
+weeks** — which is exactly what happens in a busy stretch, when the reminders
+matter most. Apple Reminders has none of that. Once an alert is on your phone it
+fires whether or not the server is running.
+
+**Before you start:** Section 14 finished, with assignments arriving.
+
+**Time:** about 20 minutes.
+
+### Steps
+
+1. **In a web browser**, sign in at <https://account.apple.com> with your Apple ID.
+
+2. Find the sign-in and security section, then **App-Specific Passwords**. Create
+   one and name it `dashboard`.
+
+   > **This is not your Apple ID password, and your Apple ID password will not
+   > work here.** An app-specific password is a separate one you can revoke on its
+   > own. It looks like `abcd-efgh-ijkl-mnop`, and it is **shown once** — copy it
+   > now and record it as **item 9** on your list.
+
+3. **On the server**, open the secrets file:
+
+   ```
+   ssh mason@100.85.173.35
+   ```
+
+   ```
+   hostname
+   ```
+
+   Confirm this prints your server's name before continuing.
+
+   ```
+   sudo nano /etc/college-dashboard/env
+   ```
+
+4. Add two lines — your Apple ID email, and the app-specific password with its
+   dashes exactly as shown to you:
+
+   ```
+   CALDAV_USERNAME=you@example.com
+   CALDAV_PASSWORD=abcd-efgh-ijkl-mnop
+   ```
+
+   Save and exit: `Control` and `O`, `Return`, `Control` and `X`.
+
+5. **Check the connection before anything is written.** This looks for the list it
+   would use and stops — it creates nothing:
+
+   ```
+   cd /home/mason/College-Dashboard
+   ```
+
+   ```
+   sudo docker compose run --rm app python -m app.caldav_push --probe
+   ```
+
+   Expected — five steps, ending with the list it will use:
+
+   ```
+   Reminders server: https://caldav.icloud.com
+   Signing in as:    you@example.com
+
+     step 1  asking https://caldav.icloud.com who we are signed in as
+     step 2  account is https://p01-caldav.icloud.com/1234567/principal/
+     step 3  calendar home is https://p01-caldav.icloud.com/1234567/calendars/
+     step 4  found 3 calendar(s):
+             Home — calendar events only
+             Work — calendar events only
+             Reminders — accepts reminders
+     step 5  will write to: Reminders
+
+     Reminders will be written to:
+       https://p01-caldav.icloud.com/1234567/calendars/reminders/
+   ```
+
+   **Do not continue until this succeeds.** Whatever step it stops at is the thing
+   to fix, and the troubleshooting below is arranged by step.
+
+6. Restart so the sync starts running:
+
+   ```
+   sudo docker compose up -d
+   ```
+
+   It syncs a few seconds after startup, then every 15 minutes.
+
+### Troubleshooting
+
+- **`Apple rejected the sign-in (HTTP 401)`** — almost always the password. A
+  normal Apple ID password does not work; it must be an app-specific one. Make a
+  new one and update the secrets file.
+
+- **It stops after step 1** — the address is wrong. Remove any `CALDAV_URL` line
+  and let it use Apple's default.
+
+- **`The account has calendars but none of them accept reminders`** — your
+  reminder lists are stored on the phone rather than in iCloud. On the iPhone, open
+  **Settings → your name → iCloud** and turn **Reminders** on, then run the probe
+  again.
+
+- **`Could not reach the reminders server`** — the server has no internet. Check
+  with `curl -s -o /dev/null -w '%{http_code}' https://www.apple.com`.
+
+- **Nothing appears on the phone after 20 minutes** — check the log:
+  `sudo docker compose logs --tail 30 | grep -i caldav`.
+
+### Check before continuing — this is the milestone
+
+1. Open **Reminders** on your iPhone. Your assignments should be there, one item
+   each, with due dates.
+
+2. Now prove the part that matters. In the dashboard, add a piece of work due in
+   about **three hours and ten minutes** — its 3-hour nudge then falls a few
+   minutes from now.
+
+3. Force a sync rather than waiting:
+
+   ```
+   sudo docker compose restart
+   ```
+
+4. **Close the laptop. Put it away.** Wait for the alert.
+
+When your phone buzzes with the laptop shut, M3 is done — and so is everything
+SPEC calls the useful core.
 
 ---
 

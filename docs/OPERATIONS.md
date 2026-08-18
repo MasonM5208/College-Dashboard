@@ -379,6 +379,51 @@ M4, and the assistant is instructed to say so plainly instead of guessing. An
 invented email is the one failure mode this milestone was designed to prevent, and
 it means the instruction is not holding.
 
+### Reminders have stopped reaching the phone
+
+The status page shows **Reminders sent to your iPhone** as `stale` or `failing`.
+Check what it says, then:
+
+```
+sudo docker compose run --rm app python -m app.caldav_push --probe
+```
+
+That walks the connection step by step and writes nothing. Whichever step it stops
+at is the problem — `SETUP.md` Section 16's troubleshooting is arranged the same
+way.
+
+- **HTTP 401** — the app-specific password was revoked, or the Apple ID password
+  was changed, which revokes them all. Make a new one at `account.apple.com`.
+- **No list accepts reminders** — Reminders was turned off for iCloud on the phone.
+- **It worked yesterday and not today** — Apple occasionally moves accounts between
+  servers, which invalidates the cached list address. Clear it and let it rediscover:
+
+  ```
+  sudo docker compose run --rm app python -c "from app import db; c=db.connect(); c.execute(\"UPDATE sync_state SET cursor=NULL WHERE source='caldav_push'\"); c.close()"
+  ```
+
+### An alert fired at the wrong time, or one never came
+
+Check what the dashboard thinks it scheduled:
+
+```
+sudo docker compose run --rm app python -m app.caldav_push --dry-run
+```
+
+That prints the exact reminder it would send for the next few assignments,
+including every alert time. If those look right and the phone disagrees, the
+problem is between Apple and the phone rather than here — check that the Reminders
+list is the one syncing to iCloud.
+
+Reminders are never sent between 10:30pm and 7:30am. An alert that looks missing
+around those hours has most likely moved to the edge of the window by design.
+
+### A reminder is on the phone for work already done
+
+Ticking something off in Reminders does not tell the dashboard. Mark it **Done** in
+the dashboard instead, and the next sync removes it from the phone. Completion does
+not flow back from Apple — that needs a read loop, which SPEC §8 defers.
+
 ### A job says `stale` or `failing` on the dashboard
 
 `stale` means it has not succeeded recently enough. `failing` means it has failed

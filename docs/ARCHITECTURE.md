@@ -7,9 +7,9 @@ the decisions that are not obvious from reading the code, including the ones tha
 were rejected. A rejected alternative documented is a rejected alternative nobody
 has to re-investigate.
 
-Current state: **M0, M1, M2 and M5 built.** M3 (reminders) and M4 (the document
-archive) are not started — M5 was pulled ahead of both at Mason's request, which
-is why the chat ships with two of its four tools.
+Current state: **M0, M1, M2, M3 and M5 built** — SPEC §12's useful core plus the
+chat. M4 (the document archive) is not started, which is why the chat ships with
+two of its four tools.
 
 ---
 
@@ -326,6 +326,87 @@ night's copy matters. Polling Canvas is meaningless when the app is down. Hence
 one in cron and one in an asyncio task, which looks inconsistent and is not.
 
 ---
+
+## Reminders (M3)
+
+`app/reminders.py` decides when to nudge; `app/caldav_push.py` gets those moments
+onto the phone. SPEC §12 judges this milestone on one sentence — a reminder fires
+on the iPhone with the laptop closed.
+
+### One to-do carrying many alerts
+
+Each assignment becomes a single `VTODO` with one `VALARM` per rung, rather than
+one to-do per rung. Two consequences, and the second is the important one:
+
+- The Reminders list stays one line per piece of work. Twelve Canvas assignments
+  would otherwise have become about thirty separate to-dos, four of them the same
+  exam.
+- **iOS does the firing.** The scheduled job is therefore not "send a reminder at
+  the right moment" but "keep Apple's copy in step with ours". If the server is
+  down at 7am on a Saturday, the alert still fires — it was pushed days earlier and
+  lives on the phone. A design where the server must be up at the moment of the
+  nudge would fail exactly when it is least noticed.
+
+SPEC §5's "materialize every reminder as its own row" still holds: one row per
+rung here, regardless of how they are packaged for Apple. That is what makes a
+moved deadline coherent.
+
+### Ladders are data
+
+`0004_reminder_defaults.sql` seeds SPEC §8's ladders into `reminder_rules`, so
+tuning them later is a form rather than a deploy. SPEC gives no ladder for `other`;
+it gets the worksheet one, on the grounds that silence is the worse default.
+
+### Quiet hours
+
+22:30–07:30, per SPEC §8, with a `due_by` shifting earlier and a `start_by` later.
+The case worth writing down: "earlier" for something landing at 03:00 means 22:30
+*the previous evening*, because 22:30 the same day is still ahead of it. Rungs
+already past are dropped, so an assignment entered three days out does not fire its
+ten-day nudge on save.
+
+### A stable UID, deliberately
+
+The to-do's UID is derived from the assignment id, so a re-push overwrites. A
+generated UID would add a second copy every sync, and a Reminders list filling with
+duplicates is the failure that would make him turn the feature off rather than
+report it.
+
+### `sent` means "on the phone", which changes what a moved deadline does
+
+A moved deadline supersedes reminders already marked `sent`, not only `pending`
+ones — because under this design `sent` means the alarm is sitting inside the
+to-do on the phone, and leaving it would fire an alert at the old time. Superseded
+rows are kept, so SPEC §5's auditability is intact. This changed an M1 test that
+had encoded the weaker rule before M3 existed.
+
+### Rejected: the `caldav` package
+
+It pulls in seven dependencies including lxml, a C extension, to perform three
+verbs against one server: PROPFIND to find the list, PUT to write a to-do, DELETE
+to remove one. Written against `urllib` and `xml.etree` instead — the same call
+made for the Canvas fetch in M1, and it matters more on a 1 vCPU box where every
+dependency is something that breaks on upgrade at a moment nobody chose.
+
+Discovery is four requests, cached in `sync_state.cursor` — a column SPEC §5
+defined in M0 that nothing had used until now.
+
+### The probe exists because I could not test this
+
+There is no Apple app-specific password on a development machine, so the code
+reached the server unproven against iCloud. `python -m app.caldav_push --probe`
+walks discovery step by step and writes nothing, turning "reminders do not work"
+into "discovery reached the calendar home and then found no list accepting
+to-dos", which is a fixable sentence. `--dry-run` prints the exact to-do that would
+be sent.
+
+### Completion does not flow back
+
+SPEC §8 defers this and the reason is cost, not oversight: reading state back needs
+a CalDAV poll loop. Ticking a reminder off in iOS does not mark the work done here.
+`DAILY_USE.md` states it plainly, because the failure mode — the dashboard still
+counting hours for work already finished — is quiet and would erode trust in the
+ranking.
 
 ## The chat layer (M5)
 

@@ -67,9 +67,16 @@ running monthly total is shown. Pulled ahead of M3 and M4 by request. The two
 archive tools SPEC §10 lists arrive with M4 and the table they read; until then
 the assistant states plainly that it has no message archive.
 
-Next: **M3**, reminders — ladders of escalating nudges pushed to Apple Reminders
-over CalDAV, so a deadline reaches the phone with the laptop shut. Then **M4**,
-the document archive, which completes the chat's tool set.
+**M3 — Reminders: built, awaiting the first real push.** Each assignment becomes
+one item in Apple Reminders carrying its whole ladder of alerts, pushed over
+CalDAV. Because the alerts live on the phone, they fire whether or not the server
+is running. Quiet hours are respected, and a moved deadline retires its old
+reminders and rebuilds them rather than moving them.
+
+With that, **SPEC §12's useful core (M0–M3) is complete.**
+
+Next: **M4**, the document archive — a verbatim, searchable record of the messages
+that matter, which also completes the chat's tool set.
 
 Build order and the acceptance criteria for each milestone are in [SPEC.md
 §12](SPEC.md).

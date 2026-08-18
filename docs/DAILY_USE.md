@@ -198,6 +198,34 @@ bottom of Today under **Courses still named after a code**. Type a real name, ta
 
 ---
 
+## Reminders on your phone
+
+Every assignment with a due date becomes one item in Apple **Reminders**, carrying
+all of its alert times. A worksheet gets two nudges, a paper five, an exam four —
+the ladder depends on the kind of work, and you do not set any of it up.
+
+Two things worth knowing:
+
+- **Alerts fire from your phone, not from the server.** Once an alert is on the
+  phone it goes off whether or not the dashboard is running. A server outage at 7am
+  on a Saturday does not cost you the reminder.
+- **Nothing arrives between 10:30pm and 7:30am.** Anything that would land in that
+  window moves to the nearest edge — deadline warnings move earlier, "time to
+  start" nudges move to the morning.
+
+### Ticking one off in Reminders does nothing here
+
+This is the one asymmetry to keep in mind. Marking a reminder done on your phone
+does **not** mark the work done in the dashboard — reading that back needs work
+that is not built.
+
+**The dashboard is the record of what you have done.** Tap **Done** there, and the
+reminder disappears from your phone at the next sync. Do it the other way round and
+the dashboard will keep thinking the work is outstanding, and keep counting its
+hours against your week.
+
+---
+
 ## What this does not know about
 
 **Only work with a due date set in Canvas appears automatically.** If a professor
