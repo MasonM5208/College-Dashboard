@@ -27,6 +27,44 @@ from app import canvas, config, db, migrate, scheduler, status
 
 log = logging.getLogger("dashboard")
 
+
+def configure_logging() -> None:
+    """Send this project's log messages to the container's output.
+
+    Without this, nothing below WARNING is ever seen. uvicorn configures its own
+    `uvicorn.*` loggers and leaves the root logger untouched, so the root stays at
+    WARNING with no handler attached, and every log.info in this package is
+    discarded. Python's handler of last resort still prints warnings and errors,
+    which produces the worst possible arrangement: a failing Canvas poll is
+    reported and a successful one is not.
+
+    SPEC §4 asks that every scheduled job log its outcome, precisely so that a job
+    which quietly stopped can be told apart from one that is working. Only seeing
+    failures makes silence ambiguous.
+
+    The format matches app/migrate.py, so the entrypoint's migration output and the
+    server's output read as one log.
+    """
+    # Attaches a handler and sets the root level — but only when nothing else has
+    # configured logging already, which is why the levels below are set explicitly
+    # rather than relied upon from here.
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s %(levelname)s [%(name)s] %(message)s",
+        datefmt="%Y-%m-%dT%H:%M:%S%z",
+    )
+
+    # Set this project's own loggers directly. A logger's level is consulted on the
+    # logger the message came from, not on its ancestors, so this holds whatever
+    # the root logger's level happens to be — which matters because something else
+    # may already have configured logging by the time this runs, making the call
+    # above do nothing at all.
+    for name in ("dashboard", "canvas", "scheduler", "migrate"):
+        logging.getLogger(name).setLevel(logging.INFO)
+
+
+configure_logging()
+
 STATIC_DIR = config.REPO_ROOT / "app" / "static"
 TEMPLATES_DIR = config.REPO_ROOT / "app" / "templates"
 

@@ -357,3 +357,41 @@ def test_three_consecutive_failures_escalate(db_path):
         assert status.sync_sources(conn)[0]["level"] == "failing"
     finally:
         conn.close()
+
+
+# --- logging ----------------------------------------------------------------
+
+
+def test_the_applications_own_log_messages_are_emitted():
+    """SPEC §4: every scheduled job logs its outcome.
+
+    uvicorn configures only its own loggers, so without explicit setup the root
+    logger stays at WARNING with no handler and every log.info in this package
+    vanishes — while Python's last-resort handler still prints warnings. Failures
+    would be visible and successes invisible, which makes silence in the log
+    ambiguous exactly where it must not be.
+    """
+    import logging
+
+    assert logging.getLogger().handlers, "no handler on the root logger"
+    for name in ("dashboard", "canvas", "scheduler"):
+        assert logging.getLogger(name).isEnabledFor(logging.INFO), name
+
+
+def test_a_successful_canvas_poll_is_logged(db_path, monkeypatch, caplog):
+    from pathlib import Path
+
+    from app import canvas
+
+    feed = (Path(__file__).parent / "fixtures" / "canvas_sample.ics").read_text("utf-8")
+    monkeypatch.setattr(canvas, "fetch", lambda url, timeout=30.0: feed)
+
+    conn = db.connect(db_path)
+    try:
+        with caplog.at_level("INFO"):
+            canvas.sync(conn, url="https://example.invalid/secret.ics")
+    finally:
+        conn.close()
+
+    assert "Canvas sync:" in caplog.text
+    assert "7 events" in caplog.text
