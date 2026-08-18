@@ -203,6 +203,13 @@ ESTIMATE_CHOICES = [
 # readable at a glance.
 HORIZON_DAYS = 21
 
+# At most this many estimate prompts at once. A fresh Canvas import arrives with
+# nothing estimated, and showing all of them turns the default screen into a wall
+# of forms with no ranked work visible at all — which fails the one-glance test
+# SPEC §12 sets for this milestone. They are asked for soonest-due first, so
+# clearing the visible ones is also the right order to clear them in.
+ESTIMATE_PROMPT_LIMIT = 5
+
 
 def _assignment_rows(conn):
     return conn.execute(
@@ -238,7 +245,8 @@ def today(request: Request):
     now = datetime.now(timezone.utc)
     items = priority.rank(rows, zone, now)
 
-    needs_estimate = [i for i in items if i.needs_estimate and i.due_at]
+    all_needing_estimate = [i for i in items if i.needs_estimate and i.due_at]
+    needs_estimate = all_needing_estimate[:ESTIMATE_PROMPT_LIMIT]
     no_due_date = [i for i in items if not i.due_at]
     overdue = [i for i in items if i.overdue and not i.needs_estimate]
     horizon = now + timedelta(days=HORIZON_DAYS)
@@ -265,6 +273,7 @@ def today(request: Request):
         context={
             "facts": facts,
             "needs_estimate": [present(i) for i in needs_estimate],
+            "estimates_hidden": len(all_needing_estimate) - len(needs_estimate),
             "overdue": [present(i) for i in overdue],
             "ranked": [present(i) for i in ranked],
             "beyond": [present(i) for i in beyond],

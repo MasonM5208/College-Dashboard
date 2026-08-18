@@ -51,10 +51,17 @@
 
   {% if needs_estimate %}
     <section>
-      <h2>{{ needs_estimate | length }} need an estimate before they can be ranked</h2>
+      <h2>
+        {{ needs_estimate | length + estimates_hidden }} need an estimate before
+        they can be ranked
+      </h2>
       <p class="muted">
         How long each will take is the one number this cannot work out for itself,
         and nothing is ranked without it. One tap each.
+        {%- if estimates_hidden %}
+          The {{ needs_estimate | length }} due soonest are shown; the other
+          {{ estimates_hidden }} appear as these are cleared.
+        {%- endif %}
       </p>
       <ul class="stack">
         {% for entry in needs_estimate %}

@@ -340,3 +340,33 @@ def test_an_empty_dashboard_says_so(client):
 def test_the_feeds_limits_are_restated_here_too(client):
     """SPEC §6.3 wants this where it will actually be read."""
     assert "only knows about work with a due date" in text_of(client.get("/"))
+
+
+def test_the_estimate_prompts_do_not_swamp_the_screen(client, db_path):
+    """A fresh Canvas import arrives with nothing estimated.
+
+    Showing every prompt at once leaves no ranked work visible, which fails SPEC
+    §12's requirement that one glance answers what to do next.
+    """
+    for day in range(1, 13):
+        add(db_path, f"Unestimated {day}", due_at=iso(days=day))
+    add(db_path, "Already sized", due_at=iso(days=4), est_hours_remaining=2.0)
+
+    body = text_of(client.get("/"))
+
+    assert "13 need an estimate" not in body
+    assert "12 need an estimate before they can be ranked" in body
+    assert "the other 7 appear as these are cleared" in body
+    # The ranked work is still visible without scrolling past everything.
+    assert "Start with this" in body
+    assert "Already sized" in body
+
+
+def test_estimates_are_asked_for_soonest_first(client, db_path):
+    for day in (30, 2, 15, 1, 20, 8, 25):
+        add(db_path, f"Due in {day} days", due_at=iso(days=day))
+    body = text_of(client.get("/"))
+    assert "Due in 1 days" in body
+    assert "Due in 2 days" in body
+    # The most distant ones wait their turn.
+    assert "Due in 30 days" not in body.split("What to work on")[0]

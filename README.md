@@ -26,12 +26,11 @@ like.
 | File | For |
 |---|---|
 | [docs/SETUP.md](docs/SETUP.md) | Building it, the first time |
+| [docs/DAILY_USE.md](docs/DAILY_USE.md) | Using it, every day |
 | [docs/OPERATIONS.md](docs/OPERATIONS.md) | Checking on it, updating it, fixing it when it will not load |
 | [docs/SECRETS.md](docs/SECRETS.md) | Every password and key: what it is for, and how to replace it |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | How it works and why, for a developer |
 | [SPEC.md](SPEC.md) | What is being built, and what is deliberately excluded |
-
-`docs/DAILY_USE.md` arrives with M2, when there is something to use.
 
 ---
 
@@ -52,8 +51,14 @@ courses arrive identified only by an enrolment code, and **only work with a due
 date set in Canvas appears at all**, so courses that do not use Canvas that way are
 invisible. See `SETUP.md` Section 14.
 
-Next: **M2**, the Today view — what to work on, ranked by how much time is actually
-free before each deadline rather than by which deadline is nearest.
+**M2 — Today view: first half built.** The default screen ranks work by slack —
+free hours before the deadline minus hours of work left — rather than by which
+deadline is nearest, with the numbers behind every position shown alongside it.
+One-tap status changes, one-tap time estimates, quick capture, pinning and course
+renaming. See [docs/DAILY_USE.md](docs/DAILY_USE.md).
+
+Next: the second half of M2 — entering assignments by hand and typing up a
+syllabus in one go, so the courses Canvas cannot see are represented too.
 
 Build order and the acceptance criteria for each milestone are in [SPEC.md
 §12](SPEC.md).
