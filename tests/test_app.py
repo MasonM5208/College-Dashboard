@@ -1,4 +1,4 @@
-"""Tests for the M0 web app: the status page, /healthz, and the PWA assets."""
+"""Tests for the web app: the Today view, the status page, /healthz and PWA assets."""
 
 from __future__ import annotations
 
@@ -49,7 +49,7 @@ def _sync_row(path, source, *, success_hours_ago=None, failures=0, error=None):
 
 
 def test_status_page_renders(client):
-    response = client.get("/")
+    response = client.get("/status")
     assert response.status_code == 200
     assert "text/html" in response.headers["content-type"]
 
@@ -69,7 +69,7 @@ def test_status_page_links_the_pwa_assets(client):
 
 
 def test_status_page_says_when_nothing_is_scheduled_yet(client):
-    assert "Nothing runs on a schedule yet" in client.get("/").text
+    assert "Nothing runs on a schedule yet" in client.get("/status").text
 
 
 def test_status_page_shows_a_failing_job(client, db_path):
@@ -80,7 +80,7 @@ def test_status_page_shows_a_failing_job(client, db_path):
         failures=4,
         error="HTTPSConnectionPool: Read timed out",
     )
-    body = client.get("/").text
+    body = client.get("/status").text
     assert "Canvas calendar feed" in body
     assert "4 failure(s) in a row" in body
     # SPEC §4 wants the real error text, not a paraphrase of it.
@@ -185,7 +185,7 @@ def test_a_vanished_item_is_shown_not_hidden(client, db_path):
 
 def test_status_page_links_to_assignments(client, db_path):
     _ingest_fixture(db_path)
-    body = client.get("/").text
+    body = client.get("/status").text
     assert 'href="/assignments"' in body
     # Collapse the template's line wrapping before matching on the sentence.
     assert "7 tracked across 3 courses" in " ".join(body.split())
@@ -200,14 +200,14 @@ def test_status_page_still_shows_assignments_when_polling_is_off(client, db_path
     """
     monkeypatch.delenv("CANVAS_ICS_URL", raising=False)
     _ingest_fixture(db_path)
-    body = " ".join(client.get("/").text.split())
+    body = " ".join(client.get("/status").text.split())
     assert "7 tracked across 3 courses" in body
     assert "nothing new is being collected" in body
 
 
 def test_status_page_says_when_canvas_is_not_configured(client, monkeypatch):
     monkeypatch.delenv("CANVAS_ICS_URL", raising=False)
-    body = client.get("/").text
+    body = client.get("/status").text
     assert "Canvas feed address has not been set" in body
 
 

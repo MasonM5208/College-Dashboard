@@ -167,3 +167,112 @@ button {
 button:active { opacity: 0.85; }
 
 a { color: var(--accent); }
+
+/* ---- Today view -------------------------------------------------------- */
+
+/* Quick capture. SPEC §9 calls entry friction the thing that kills systems like
+   this, so it sits at the top of the default screen and asks for nothing else. */
+.capture {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 1.75rem;
+}
+
+.capture input {
+  flex: 1;
+  min-width: 0;
+  font: inherit;
+  padding: 0.6rem 0.8rem;
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  background: var(--surface);
+  color: var(--text);
+  /* 16px keeps iOS from zooming the page when the field is focused. */
+  font-size: 16px;
+}
+
+.capture input:focus, .rename input:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.stack { list-style: none; margin: 0; padding: 0; }
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 0.6rem;
+  padding: 0.85rem 1rem;
+  margin-bottom: 0.6rem;
+}
+
+/* The single most important element on the screen. SPEC §12: if it takes more
+   than one tap to know what to do next, this milestone is not done. */
+.card-next {
+  border: 2px solid var(--accent);
+  padding: 1.1rem 1.15rem;
+}
+
+.next-label {
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--accent);
+  margin-bottom: 0.35rem;
+}
+
+.card-todo { border-left: 3px solid var(--accent); }
+.card-late { border-left: 3px solid var(--bad-text); }
+.card-quiet { opacity: 0.75; }
+
+.card-title { font-weight: 600; line-height: 1.35; }
+.card-title-big { font-size: 1.2rem; margin-bottom: 0.15rem; }
+
+.why { margin-top: 0.3rem; }
+
+/* The one-sentence explanation SPEC §9 requires the ordering to be readable as. */
+.verdict {
+  margin-top: 0.4rem;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--ok-text);
+}
+
+.verdict-bad { color: var(--bad-text); }
+
+.row-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-top: 0.7rem;
+}
+
+/* Small enough to sit several to a row, still a comfortable tap target. */
+.chip {
+  min-height: 38px;
+  padding: 0.35rem 0.75rem;
+  font-size: 0.85rem;
+  border-radius: 0.45rem;
+  background: transparent;
+  color: var(--accent);
+  border: 1px solid var(--accent);
+}
+
+.chip-done { background: var(--accent); color: var(--surface); }
+
+.rename { display: flex; gap: 0.5rem; margin-top: 0.5rem; }
+
+.rename input {
+  flex: 1;
+  min-width: 0;
+  font: inherit;
+  font-size: 16px;
+  padding: 0.5rem 0.7rem;
+  border: 1px solid var(--border);
+  border-radius: 0.45rem;
+  background: var(--bg);
+  color: var(--text);
+}
+
+.footnote { margin-top: 1rem; font-size: 0.82rem; }

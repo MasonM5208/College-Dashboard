@@ -13,17 +13,18 @@ starts uvicorn by hand.
 
 from __future__ import annotations
 
+import json
 import logging
 from contextlib import asynccontextmanager
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Form, HTTPException, Request
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
-from app import canvas, config, db, migrate, scheduler, status
+from app import canvas, config, db, migrate, priority, scheduler, status
 
 log = logging.getLogger("dashboard")
 
@@ -160,8 +161,8 @@ app = FastAPI(
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
 
-@app.get("/")
-def index(request: Request):
+@app.get("/status")
+def status_page(request: Request):
     conn = db.connect()
     try:
         facts = status.collect(conn)
@@ -185,6 +186,233 @@ def index(request: Request):
             ),
         },
     )
+
+
+
+# --- the Today view ---------------------------------------------------------
+
+# SPEC §9: one-tap estimates. These are the sizes that cover almost everything;
+# anything unusual gets edited properly once M2's second half lands.
+ESTIMATE_CHOICES = [
+    ("15m", 0.25), ("30m", 0.5), ("1h", 1.0),
+    ("2h", 2.0), ("4h", 4.0), ("8h", 8.0),
+]
+
+# How far ahead "later" reaches before an item stops being shown on the main
+# screen. Long enough to see a paper coming, short enough that the page stays
+# readable at a glance.
+HORIZON_DAYS = 21
+
+
+def _assignment_rows(conn):
+    return conn.execute(
+        """
+        SELECT a.id, a.title, a.type, a.status, a.due_at, a.pinned,
+               a.est_hours, a.est_hours_remaining,
+               c.name AS course_name, c.code AS course_code
+        FROM assignments a
+        LEFT JOIN courses c ON c.id = a.course_id
+        """
+    ).fetchall()
+
+
+@app.get("/")
+def today(request: Request):
+    """The default screen. SPEC §12: "If it takes more than one tap to know what
+    to do next, this milestone is not done."
+
+    Ordered by slack, not by deadline, and every item carries the numbers that put
+    it where it is (SPEC §9 display rules).
+    """
+    conn = db.connect()
+    try:
+        rows = _assignment_rows(conn)
+        facts = status.collect(conn)
+        courses_to_name = conn.execute(
+            "SELECT id, name, code FROM courses WHERE needs_naming = 1 ORDER BY name"
+        ).fetchall()
+    finally:
+        conn.close()
+
+    zone = request.app.state.zone
+    now = datetime.now(timezone.utc)
+    items = priority.rank(rows, zone, now)
+
+    needs_estimate = [i for i in items if i.needs_estimate and i.due_at]
+    no_due_date = [i for i in items if not i.due_at]
+    overdue = [i for i in items if i.overdue and not i.needs_estimate]
+    horizon = now + timedelta(days=HORIZON_DAYS)
+    ranked = [
+        i for i in items
+        if i.rankable and not i.overdue and i.due_local and i.due_local <= horizon
+    ]
+    beyond = [
+        i for i in items
+        if i.rankable and not i.overdue and i.due_local and i.due_local > horizon
+    ]
+
+    def present(item):
+        return {
+            "item": item,
+            "due_text": priority.describe_due(item, now),
+            "slack_text": priority.describe_slack(item),
+            "due_exact": local_time(item.due_at, zone),
+        }
+
+    return templates.TemplateResponse(
+        request=request,
+        name="today.html",
+        context={
+            "facts": facts,
+            "needs_estimate": [present(i) for i in needs_estimate],
+            "overdue": [present(i) for i in overdue],
+            "ranked": [present(i) for i in ranked],
+            "beyond": [present(i) for i in beyond],
+            "no_due_date": [present(i) for i in no_due_date],
+            "courses_to_name": courses_to_name,
+            "estimates": ESTIMATE_CHOICES,
+            "now_display": local_time(now.strftime(status.TIMESTAMP_FMT), zone),
+            "horizon_days": HORIZON_DAYS,
+        },
+    )
+
+
+def _back(request: Request) -> RedirectResponse:
+    """Return to wherever the button was pressed, so context is not lost."""
+    target = request.headers.get("referer") or "/"
+    if "://" in target:
+        # Only ever redirect within this site.
+        from urllib.parse import urlparse
+        parsed = urlparse(target)
+        target = parsed.path + (f"?{parsed.query}" if parsed.query else "")
+    return RedirectResponse(target or "/", status_code=303)
+
+
+@app.post("/assignments/{assignment_id}/status")
+def set_status(assignment_id: int, request: Request, value: str = Form(...)):
+    """One tap to change what state something is in (SPEC §12)."""
+    if value not in {"not_started", "in_progress", "submitted", "dismissed"}:
+        raise HTTPException(status_code=400, detail="Unknown status")
+
+    conn = db.connect()
+    try:
+        row = conn.execute(
+            "SELECT status FROM assignments WHERE id = ?", (assignment_id,)
+        ).fetchone()
+        if row is None:
+            raise HTTPException(status_code=404, detail="No such assignment")
+
+        conn.execute("BEGIN")
+        conn.execute(
+            "UPDATE assignments SET status = ? WHERE id = ?", (value, assignment_id)
+        )
+        if value in ("submitted", "dismissed"):
+            # Nothing is left to do, so the ranking should stop reserving time for
+            # it. est_hours is left alone as the record of what was estimated.
+            conn.execute(
+                "UPDATE assignments SET est_hours_remaining = 0 WHERE id = ?",
+                (assignment_id,),
+            )
+        conn.execute(
+            "INSERT INTO audit_log (action, table_name, record_id, detail_json) "
+            "VALUES ('status_change', 'assignments', ?, ?)",
+            (assignment_id, json.dumps({"from": row["status"], "to": value})),
+        )
+        conn.execute("COMMIT")
+    finally:
+        conn.close()
+
+    return _back(request)
+
+
+@app.post("/assignments/{assignment_id}/estimate")
+def set_estimate(assignment_id: int, request: Request, hours: float = Form(...)):
+    """One tap to say how long something will take.
+
+    SPEC §9: "The prioritization engine is inert without this field populated."
+    Both columns are set, because until work is logged against it in M6 the
+    remaining time is the whole estimate.
+    """
+    if not 0 < hours <= 100:
+        raise HTTPException(status_code=400, detail="Estimate out of range")
+
+    conn = db.connect()
+    try:
+        conn.execute("BEGIN")
+        conn.execute(
+            "UPDATE assignments SET est_hours = ?, est_hours_remaining = ? WHERE id = ?",
+            (hours, hours, assignment_id),
+        )
+        conn.execute(
+            "INSERT INTO audit_log (action, table_name, record_id, detail_json) "
+            "VALUES ('estimate', 'assignments', ?, ?)",
+            (assignment_id, json.dumps({"est_hours": hours})),
+        )
+        conn.execute("COMMIT")
+    finally:
+        conn.close()
+
+    return _back(request)
+
+
+@app.post("/assignments/{assignment_id}/pin")
+def toggle_pin(assignment_id: int, request: Request):
+    """SPEC §9: the manual override that always wins."""
+    conn = db.connect()
+    try:
+        conn.execute(
+            "UPDATE assignments SET pinned = 1 - pinned WHERE id = ?", (assignment_id,)
+        )
+    finally:
+        conn.close()
+    return _back(request)
+
+
+@app.post("/capture")
+def capture(request: Request, text: str = Form(...)):
+    """Quick capture. SPEC §9: "Dump anything, triage later."
+
+    Stored as an assignment with nothing but a title, which is what puts it in the
+    needs-triage list rather than the ranking. Entry friction is what kills systems
+    like this, so nothing else is asked for.
+    """
+    title = text.strip()
+    if not title:
+        return _back(request)
+
+    conn = db.connect()
+    try:
+        cur = conn.execute(
+            "INSERT INTO assignments (title, source, status) "
+            "VALUES (?, 'manual', 'not_started')",
+            (title[:500],),
+        )
+        conn.execute(
+            "INSERT INTO audit_log (action, table_name, record_id, detail_json) "
+            "VALUES ('capture', 'assignments', ?, ?)",
+            (cur.lastrowid, json.dumps({"title": title[:500]})),
+        )
+    finally:
+        conn.close()
+    return _back(request)
+
+
+@app.post("/courses/{course_id}/name")
+def rename_course(course_id: int, request: Request, name: str = Form(...)):
+    """Replace the SIS code the feed supplied with something readable."""
+    new_name = name.strip()
+    if not new_name:
+        return _back(request)
+
+    conn = db.connect()
+    try:
+        conn.execute(
+            "UPDATE courses SET name = ?, needs_naming = 0 WHERE id = ?",
+            (new_name[:200], course_id),
+        )
+    finally:
+        conn.close()
+    return _back(request)
 
 
 @app.get("/assignments")

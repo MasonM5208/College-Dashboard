@@ -1,0 +1,213 @@
+{% extends "base.html" %}
+
+{% macro estimate_buttons(item, estimates) %}
+  <form method="post" action="/assignments/{{ item.id }}/estimate" class="row-actions">
+    {% for label, hours in estimates %}
+      <button type="submit" name="hours" value="{{ hours }}" class="chip">{{ label }}</button>
+    {% endfor %}
+  </form>
+{% endmacro %}
+
+{% macro status_buttons(item) %}
+  <form method="post" action="/assignments/{{ item.id }}/status" class="row-actions">
+    {% if item.status != 'in_progress' %}
+      <button type="submit" name="value" value="in_progress" class="chip">Start</button>
+    {% endif %}
+    <button type="submit" name="value" value="submitted" class="chip chip-done">Done</button>
+  </form>
+{% endmacro %}
+
+{# Every ranked row carries the numbers that placed it — SPEC §9 forbids a bare
+   score and requires the inputs to travel with the item. #}
+{% macro reasons(entry) %}
+  <div class="muted why">
+    {{ entry.due_text }}
+    {%- if entry.item.hours_left is not none %}
+      · {{ '%g' % entry.item.hours_left }}h of work left
+    {%- endif %}
+    {%- if entry.item.hours_free is not none %}
+      · {{ '%g' % entry.item.hours_free }}h free before then
+    {%- endif %}
+  </div>
+{% endmacro %}
+
+{% block title %}Today — Semester Dashboard{% endblock %}
+{% block heading %}Today{% endblock %}
+
+{% block subheading %}
+  <p class="muted">
+    {{ now_display }} · <a href="/assignments">Everything</a> ·
+    <a href="/status">Status</a>
+  </p>
+{% endblock %}
+
+{% block content %}
+
+  <form method="post" action="/capture" class="capture">
+    <input type="text" name="text" placeholder="Capture anything — sort it out later"
+           autocomplete="off" aria-label="Quick capture">
+    <button type="submit">Add</button>
+  </form>
+
+  {% if needs_estimate %}
+    <section>
+      <h2>{{ needs_estimate | length }} need an estimate before they can be ranked</h2>
+      <p class="muted">
+        How long each will take is the one number this cannot work out for itself,
+        and nothing is ranked without it. One tap each.
+      </p>
+      <ul class="stack">
+        {% for entry in needs_estimate %}
+          <li class="card card-todo">
+            <div class="card-title">{{ entry.item.title }}</div>
+            <div class="muted">
+              {{ entry.item.course_code or entry.item.course_name or 'no course' }} ·
+              {{ entry.due_text }}
+            </div>
+            {{ estimate_buttons(entry.item, estimates) }}
+          </li>
+        {% endfor %}
+      </ul>
+    </section>
+  {% endif %}
+
+  {% if overdue %}
+    <section>
+      <h2>Past due</h2>
+      <ul class="stack">
+        {% for entry in overdue %}
+          <li class="card card-late">
+            <div class="card-title">{{ entry.item.title }}</div>
+            <div class="muted">
+              {{ entry.item.course_code or entry.item.course_name or 'no course' }} ·
+              was due {{ entry.due_exact }}
+            </div>
+            {{ status_buttons(entry.item) }}
+          </li>
+        {% endfor %}
+      </ul>
+    </section>
+  {% endif %}
+
+  <section>
+    <h2>What to work on</h2>
+
+    {% if not ranked %}
+      <p class="muted">
+        {% if needs_estimate %}
+          Nothing can be ranked until the estimates above are filled in.
+        {% else %}
+          Nothing due in the next {{ horizon_days }} days.
+        {% endif %}
+      </p>
+    {% else %}
+      {% set first = ranked[0] %}
+      <div class="card card-next">
+        <div class="next-label">Start with this</div>
+        <div class="card-title card-title-big">{{ first.item.title }}</div>
+        <div class="muted">
+          {{ first.item.course_name or 'No course' }}
+          {%- if first.item.pinned %} · <span class="pill pill-ok">pinned</span>{% endif %}
+          {%- if first.item.status == 'in_progress' %} · in progress{% endif %}
+        </div>
+        {{ reasons(first) }}
+        <div class="verdict {{ 'verdict-bad' if first.item.slack is not none and first.item.slack < 0 }}">
+          {{ first.slack_text }}
+        </div>
+        {{ status_buttons(first.item) }}
+      </div>
+
+      {% if ranked | length > 1 %}
+        <ul class="stack">
+          {% for entry in ranked[1:] %}
+            <li class="card">
+              <div class="card-title">{{ entry.item.title }}</div>
+              <div class="muted">
+                {{ entry.item.course_name or 'No course' }}
+                {%- if entry.item.pinned %} · <span class="pill pill-ok">pinned</span>{% endif %}
+                {%- if entry.item.status == 'in_progress' %} · in progress{% endif %}
+              </div>
+              {{ reasons(entry) }}
+              <div class="verdict {{ 'verdict-bad' if entry.item.slack is not none and entry.item.slack < 0 }}">
+                {{ entry.slack_text }}
+              </div>
+              {{ status_buttons(entry.item) }}
+            </li>
+          {% endfor %}
+        </ul>
+      {% endif %}
+
+      <p class="muted footnote">
+        Ordered by how much spare time is left before each deadline, not by which
+        deadline is nearest — a long piece of work due next week can be more urgent
+        than a short one due tomorrow. Free hours assume four productive hours a
+        day, spread between 8am and 10pm.
+      </p>
+    {% endif %}
+  </section>
+
+  {% if no_due_date %}
+    <section>
+      <h2>Needs a date</h2>
+      <p class="muted">
+        Captured, but with no deadline yet, so nothing can be worked out about them.
+        Setting dates arrives with the next piece of work.
+      </p>
+      <ul class="stack">
+        {% for entry in no_due_date %}
+          <li class="card">
+            <div class="card-title">{{ entry.item.title }}</div>
+            {{ status_buttons(entry.item) }}
+          </li>
+        {% endfor %}
+      </ul>
+    </section>
+  {% endif %}
+
+  {% if beyond %}
+    <section>
+      <h2>Further out</h2>
+      <ul class="stack">
+        {% for entry in beyond %}
+          <li class="card card-quiet">
+            <div class="card-title">{{ entry.item.title }}</div>
+            <div class="muted">
+              {{ entry.item.course_name or 'No course' }} · {{ entry.due_text }}
+              {%- if entry.item.hours_left is not none %} · {{ '%g' % entry.item.hours_left }}h of work{% endif %}
+            </div>
+          </li>
+        {% endfor %}
+      </ul>
+    </section>
+  {% endif %}
+
+  {% if courses_to_name %}
+    <section>
+      <h2>Courses still named after a code</h2>
+      <p class="muted">
+        Canvas supplies no readable course name, only an enrolment code. Give each
+        one a name you recognise.
+      </p>
+      <ul class="stack">
+        {% for course in courses_to_name %}
+          <li class="card">
+            <div class="muted">{{ course.name }}</div>
+            <form method="post" action="/courses/{{ course.id }}/name" class="rename">
+              <input type="text" name="name" placeholder="{{ course.code or 'Course name' }}"
+                     aria-label="Name for {{ course.name }}">
+              <button type="submit">Save</button>
+            </form>
+          </li>
+        {% endfor %}
+      </ul>
+    </section>
+  {% endif %}
+
+{% endblock %}
+
+{% block footer %}
+  <p class="muted">
+    Canvas only knows about work with a due date set in it, so this is a floor
+    rather than the whole picture.
+  </p>
+{% endblock %}
