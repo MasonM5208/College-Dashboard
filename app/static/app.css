@@ -261,6 +261,10 @@ a { color: var(--accent); }
 
 .chip-done { background: var(--accent); color: var(--surface); }
 
+/* The only destructive control in the app, so it wears the warning colour rather
+   than the accent every other chip uses. */
+.chip-bad { color: var(--bad-text); border-color: var(--bad-text); }
+
 /* Some chips are links rather than buttons — same shape, same tap target. */
 a.chip {
   display: inline-flex;
@@ -394,3 +398,52 @@ a.chip {
 }
 
 .cost-line { margin-top: 0.5rem; font-size: 0.78rem; }
+
+
+/* ---- conversations ------------------------------------------------------ */
+
+/* Which conversation you are typing into, and the way out to a fresh one. It
+   sits directly above the question box because that is the moment the answer
+   depends on it. */
+.thread-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.9rem;
+}
+
+.thread-now {
+  font-weight: 600;
+  /* A title taken from a long opening question must not push the New
+     conversation button off a phone screen. */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.thread-head {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.thread-title { font-weight: 600; }
+.thread-meta { font-size: 0.8rem; margin-top: 0.15rem; }
+
+/* The last answer, one line of it. Clipped rather than wrapped so every row in
+   the list is the same height and the list stays scannable. */
+.thread-preview {
+  margin-top: 0.35rem;
+  font-size: 0.88rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.confirm { margin-top: 0.6rem; }
+.confirm p { margin: 0 0 0.5rem; font-size: 0.9rem; }
+
+.rename-box { margin-top: 0.5rem; }
+.rename-box summary { cursor: pointer; font-size: 0.82rem; }

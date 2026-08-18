@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% import "_chat_macros.html" as chat %}
 
 {% block title %}Ask — Semester Dashboard{% endblock %}
 {% block heading %}Ask{% endblock %}
@@ -6,7 +7,7 @@
 {% block subheading %}
   <p class="muted">
     <a href="/">Today</a> · <a href="/assignments">Everything</a> ·
-    <a href="/status">Status</a>
+    <a href="/status">Status</a> · <a href="/chat/threads">All conversations</a>
   </p>
 {% endblock %}
 
@@ -19,6 +20,21 @@
       See <code>docs/SETUP.md</code> section 15.
     </div>
   {% endif %}
+
+  {# Which conversation you are in, and the way out of it. Questions only carry
+     context forward within one conversation, so knowing which one you are typing
+     into is not decoration — it decides what the answer will have read. #}
+  <div class="thread-bar">
+    {% if current %}
+      <span class="thread-now">
+        {{ current.title }}
+        {% if current.pinned %}<span class="pill pill-ok">kept</span>{% endif %}
+      </span>
+      <a class="chip" href="/chat">New conversation</a>
+    {% else %}
+      <span class="thread-now muted">New conversation</span>
+    {% endif %}
+  </div>
 
   <form method="post" action="/chat/send" class="capture">
     <input type="text" name="question" placeholder="Ask anything — deadlines, coursework, whatever"
@@ -67,23 +83,40 @@
 
     {% if not messages %}
       <p class="muted">
-        Nothing asked yet. It knows your courses, what is due in the next two weeks,
-        and how much spare time you have before each deadline — and it will answer
-        ordinary questions too.
+        Nothing asked yet in this conversation. It knows your courses, what is due
+        in the next two weeks, and how much spare time you have before each
+        deadline — and it will answer ordinary questions too.
+        {% if threads %}
+          Everything you ask here stays in this conversation; earlier ones are
+          listed below and carry on where they left off.
+        {% endif %}
       </p>
     {% endif %}
   </section>
+
+  {% if current %}
+    <section>
+      <h2>This conversation</h2>
+      {{ chat.thread_controls(current, '/chat?thread=' ~ current.id, deleting) }}
+    </section>
+  {% endif %}
 
   {% if threads %}
     <section>
       <h2>Earlier conversations</h2>
       <ul class="stack">
         {% for item in threads %}
-          <li class="card {{ 'card-quiet' if item.id != thread_id }}">
-            <a href="/chat?thread={{ item.id }}">{{ item.title or 'Untitled' }}</a>
+          <li class="card thread">
+            {{ chat.thread_summary(item, thread_id) }}
           </li>
         {% endfor %}
       </ul>
+      {% if more_threads %}
+        <p class="muted">
+          <a href="/chat/threads">{{ more_threads }} more</a>, with rename and
+          delete for all of them.
+        </p>
+      {% endif %}
     </section>
   {% endif %}
 
@@ -97,6 +130,9 @@
         {{ spend.cache_read_tokens }} tokens were served from cache at about a tenth
         of the usual price.
       {%- endif %}
+      Each question re-sends the conversation it is in, so a long thread costs
+      more per question than a fresh one — another reason to start a new
+      conversation when the subject changes.
     </p>
   </section>
 

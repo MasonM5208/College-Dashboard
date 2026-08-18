@@ -109,7 +109,8 @@ are pending, which covers someone running uvicorn by hand.
 ### Why the schema arrives in pieces
 
 `0001_core.sql` creates only the tables M1–M3 need. `0002_ingest.sql` adds what
-Canvas ingestion required, and `0003_chat.sql` the two chat tables. Documents and
+Canvas ingestion required, `0003_chat.sql` the two chat tables, `0004` the
+reminder ladders and `0005` the kept flag on conversations. Documents and
 the FTS5 index arrive with M4; capacity, the timer and calibration with M6. Each table lands
 alongside the code that exercises it, so a mistake is caught by use rather than
 discovered months later, when fixing it would need exactly the destructive
@@ -422,6 +423,27 @@ asked about an email it has no tool to look up, a model reconstructs one. The
 system prompt states there is no archive and forbids guessing, and a test asserts
 that text is present. Until M4 the correct answer to "what did she email me" is "I
 cannot see your messages".
+
+### One conversation at a time
+
+The first cut opened the most recently used thread whenever `/chat` was visited
+and posted every question into it, so the whole term became one transcript. That
+is bad to read and it is also billed for: `_history_for_model` replays a thread in
+full on every turn, so an unrelated question a week later pays to re-send
+everything before it.
+
+`/chat` with no `?thread=` now starts a new conversation, and `?thread=<id>`
+continues a named one. `0005_chat_threads.sql` adds a single `pinned` column so a
+handful of conversations can sort above the rest; that is the entire filing
+system, deliberately. Tags or folders need tending, and anything needing tending
+stops being tended in November.
+
+Deleting is a real `DELETE` rather than a flag, behind a confirmation rendered in
+place on the list. `chat_messages` is deleted explicitly rather than left to the
+foreign key's `ON DELETE CASCADE`, which is silently a no-op on any connection
+where `PRAGMA foreign_keys` was not set — true of `sqlite3` at a shell prompt.
+Recovery is the nightly backup, and `OPERATIONS.md` has a read-only procedure for
+pulling one conversation out of a restored copy without touching the live file.
 
 ### A hand-written loop, not the SDK tool runner
 

@@ -1,0 +1,61 @@
+{# Controls shared by the chat page's current conversation and the full list.
+
+   `back_to` is the page the buttons were pressed on: the delete confirmation is
+   rendered in place on that page, and Cancel returns to it untouched. Passing it
+   in is what lets one macro serve both callers. #}
+
+{% macro thread_controls(item, back_to, deleting) %}
+  {% if deleting == item.id %}
+    <div class="confirm">
+      <p class="verdict-bad">
+        Delete this conversation and its {{ item.message_count }}
+        message{{ '' if item.message_count == 1 else 's' }}? Nothing in the
+        dashboard can bring it back — only last night's backup.
+      </p>
+      <div class="row-actions">
+        <form method="post" action="/chat/{{ item.id }}/delete">
+          <button type="submit" class="chip chip-bad">Yes, delete it</button>
+        </form>
+        <a class="chip" href="{{ back_to }}">Keep it</a>
+      </div>
+    </div>
+  {% else %}
+    <div class="row-actions">
+      <form method="post" action="/chat/{{ item.id }}/keep">
+        <button type="submit" class="chip">
+          {{ 'Stop keeping' if item.pinned else 'Keep' }}
+        </button>
+      </form>
+      <a class="chip chip-bad"
+         href="{{ back_to }}{{ '&' if '?' in back_to else '?' }}deleting={{ item.id }}">Delete</a>
+    </div>
+
+    {# Folded away because renaming is rare and the box is wide. #}
+    <details class="rename-box">
+      <summary class="muted">Rename</summary>
+      <form method="post" action="/chat/{{ item.id }}/rename" class="rename">
+        <input type="text" name="title" maxlength="80" value="{{ item.title }}"
+               aria-label="Name for this conversation">
+        <button type="submit">Save</button>
+      </form>
+    </details>
+  {% endif %}
+{% endmacro %}
+
+
+{# One row in a list of conversations: what it is called, how big it got, when
+   it was last touched, and what the last answer said. #}
+{% macro thread_summary(item, current_id) %}
+  <div class="thread-head">
+    <a class="thread-title" href="/chat?thread={{ item.id }}">{{ item.title }}</a>
+    {% if item.pinned %}<span class="pill pill-ok">kept</span>{% endif %}
+    {% if item.id == current_id %}<span class="pill pill-ok">open</span>{% endif %}
+  </div>
+  <div class="muted thread-meta">
+    {{ item.message_count }} message{{ '' if item.message_count == 1 else 's' }}
+    · last used {{ item.when }}
+  </div>
+  {% if item.preview %}
+    <div class="muted thread-preview">{{ item.preview }}</div>
+  {% endif %}
+{% endmacro %}

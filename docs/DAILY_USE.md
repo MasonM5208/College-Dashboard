@@ -189,6 +189,41 @@ that is a bug worth reporting.
 **It cannot change anything.** Marking work done, adding assignments and editing
 courses are all yours — it reads, it does not write.
 
+### Keeping conversations apart
+
+Each question you ask is part of a **conversation**, and a conversation is the
+unit that gets remembered. Ask a follow-up and it knows what you were just
+talking about; the whole conversation goes back to Claude every time you add to
+it.
+
+The name of the one you are in sits directly above the question box.
+
+- **Opening the Ask page starts a new conversation.** A question about Tuesday's
+  lab has nothing to do with the paper you asked about last week, and mixing them
+  makes both harder to read later.
+- **To carry on with an earlier one**, tap its name under **Earlier
+  conversations** and ask there. Everything said before comes back with it.
+- **To leave one**, tap **New conversation** next to the name.
+
+Under the transcript, a conversation you have open can be:
+
+- **Renamed.** It is named after your first question until you say otherwise, and
+  first questions all start to look alike by October. `Bio 105 lab writeups` is
+  easier to find again than `hey what do I need for`.
+- **Kept.** Kept conversations sort to the top of the list however old they get,
+  which is what you want for the two or three you actually return to.
+- **Deleted.** It asks first, and then it is gone — the messages with it. Nothing
+  in the dashboard undoes that. Last night's backup still has it, and
+  `docs/OPERATIONS.md` covers reading a deleted conversation out of a restored
+  copy, but that is a chore, so read the confirmation before tapping through it.
+
+**All conversations**, linked at the top of the Ask page, lists every one you have
+had with the same three controls on each.
+
+One practical note about cost: because a whole conversation is re-sent on every
+question, a long one costs more per question than a fresh one. Starting a new
+conversation when the subject changes keeps answers sharper *and* the bill lower.
+
 ### Name a course properly
 
 Canvas gives no readable course name in its calendar, only an enrolment code like

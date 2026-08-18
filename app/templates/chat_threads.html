@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% import "_chat_macros.html" as chat %}
+
+{% block title %}Conversations — Semester Dashboard{% endblock %}
+{% block heading %}Conversations{% endblock %}
+
+{% block subheading %}
+  <p class="muted">
+    <a href="/chat">Ask</a> · <a href="/">Today</a> ·
+    <a href="/assignments">Everything</a> · <a href="/status">Status</a>
+  </p>
+{% endblock %}
+
+{% block content %}
+
+  <p class="muted">
+    Every conversation, kept ones first. Tapping a name opens it and carries on
+    from where it stopped.
+  </p>
+
+  {% if threads %}
+    <ul class="stack">
+      {% for item in threads %}
+        <li class="card thread {{ 'card-quiet' if deleting and deleting != item.id }}">
+          {{ chat.thread_summary(item, none) }}
+          {{ chat.thread_controls(item, '/chat/threads', deleting) }}
+        </li>
+      {% endfor %}
+    </ul>
+  {% else %}
+    <p class="muted">
+      No conversations yet. <a href="/chat">Ask something</a> and the first one
+      appears here.
+    </p>
+  {% endif %}
+
+{% endblock %}

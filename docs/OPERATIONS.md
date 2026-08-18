@@ -607,6 +607,52 @@ sudo rm /srv/dashboard/data/dashboard.db.replaced
 
 ---
 
+## Reading a deleted conversation out of a backup
+
+Deleting a conversation on the Ask page is final — the dashboard has no undo for
+it. Last night's backup still has it, though, and you do **not** have to replace
+the live database to get it back. Read it out of a scratch copy instead.
+
+**This changes nothing.** Every command below touches a temporary file.
+
+1. Restore a backup to a scratch file, exactly as in `SETUP.md` Section 13. That
+   leaves you with `/tmp/restore-test.db`.
+
+2. List what conversations that copy has, newest last:
+
+   ```
+   sqlite3 /tmp/restore-test.db "SELECT id, updated_at, title FROM chat_threads ORDER BY updated_at;"
+   ```
+
+   Expect one line per conversation, like:
+
+   ```
+   4|2026-09-14T18:22:05Z|what's left before the Bio exam
+   ```
+
+   The first number is the id you need.
+
+3. Print the conversation itself, putting the id from step 2 where the `4` is:
+
+   ```
+   sqlite3 -noheader /tmp/restore-test.db "SELECT role || ': ' || content || char(10) FROM chat_messages WHERE thread_id = 4 ORDER BY id;"
+   ```
+
+   It prints the whole exchange as plain text, alternating `user:` and
+   `assistant:`.
+
+4. Delete the scratch copy when you have what you needed:
+
+   ```
+   rm /tmp/restore-test.db
+   ```
+
+If step 2 prints nothing, the backup predates the conversation or postdates the
+deletion. Backups older than last night are still in the bucket — `SETUP.md`
+Section 13 shows how to list them and restore a specific one.
+
+---
+
 ## Restore test log
 
 SPEC §11: an untested backup is not a backup. Do the drill in `SETUP.md` Section 13

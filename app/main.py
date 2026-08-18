@@ -887,15 +887,86 @@ def _history_for_model(rows) -> list[dict]:
     return history
 
 
+def _preview(text: str | None, limit: int = 120) -> str:
+    """A one-line taste of a reply, for the conversation list.
+
+    Titles are taken from opening questions, and opening questions look alike —
+    half of them start "what". The reply is what actually tells one conversation
+    from another when scanning for the one you half-remember.
+    """
+    if not text:
+        return ""
+    collapsed = " ".join(text.split())
+    if len(collapsed) <= limit:
+        return collapsed
+    return collapsed[:limit].rsplit(" ", 1)[0] + "…"
+
+
+def _thread_list(conn):
+    """Every conversation: kept ones first, then most recently used."""
+    return conn.execute(
+        """
+        SELECT t.id, t.title, t.pinned, t.updated_at,
+               (SELECT COUNT(*) FROM chat_messages m
+                 WHERE m.thread_id = t.id AND m.role IN ('user','assistant'))
+                 AS message_count,
+               (SELECT m.content FROM chat_messages m
+                 WHERE m.thread_id = t.id AND m.role = 'assistant'
+                   AND m.content IS NOT NULL AND m.content <> ''
+                 ORDER BY m.id DESC LIMIT 1) AS last_reply
+          FROM chat_threads t
+         ORDER BY t.pinned DESC, t.updated_at DESC
+        """
+    ).fetchall()
+
+
+def _shown_threads(rows, zone) -> list[dict]:
+    return [
+        {
+            "id": row["id"],
+            # A conversation always has a name on screen, so the list never has a
+            # blank row you have to open to identify.
+            "title": row["title"] or "Untitled conversation",
+            "pinned": bool(row["pinned"]),
+            "message_count": row["message_count"],
+            "when": local_time(row["updated_at"], zone),
+            "preview": _preview(row["last_reply"]),
+        }
+        for row in rows
+    ]
+
+
+# How many conversations the chat page lists beneath the current one before
+# sending you to the full list. Enough to cover "the one from this morning",
+# short enough that it does not bury the cost line at the bottom of the page.
+THREADS_ON_CHAT_PAGE = 8
+
+
 @app.get("/chat")
-def chat_page(request: Request, thread: int | None = None):
+def chat_page(
+    request: Request,
+    thread: int | None = None,
+    deleting: int | None = None,
+):
+    """One conversation at a time, with the others listed underneath.
+
+    With no ``?thread=`` this starts a *new* conversation rather than continuing
+    the most recent one. That is the substance of the change: appending every
+    question to whatever came last makes an unreadable transcript, and it is also
+    billed for, because ``_history_for_model`` re-sends the entire thread on every
+    turn. Unrelated questions should not be paying to carry each other.
+    """
     conn = db.connect()
     try:
-        threads = conn.execute(
-            "SELECT id, title, updated_at FROM chat_threads ORDER BY updated_at DESC LIMIT 30"
-        ).fetchall()
+        rows = _thread_list(conn)
+        known = {row["id"] for row in rows}
 
-        thread_id = thread or (threads[0]["id"] if threads else None)
+        # An id that no longer exists — a deleted conversation still open in
+        # another tab, a stale bookmark — opens a new conversation rather than a
+        # 404. Nothing is lost by being forgiving here.
+        thread_id = thread if thread in known else None
+        deleting = deleting if deleting in known else None
+
         messages = _thread_messages(conn, thread_id) if thread_id else []
         spend = claude_chat.month_to_date_cost(conn)
         configured = bool(os.environ.get("CLAUDE_API_KEY", "").strip())
@@ -903,6 +974,10 @@ def chat_page(request: Request, thread: int | None = None):
         conn.close()
 
     zone = request.app.state.zone
+    threads = _shown_threads(rows, zone)
+    current = next((item for item in threads if item["id"] == thread_id), None)
+    others = [item for item in threads if item["id"] != thread_id]
+
     shown = [
         {
             "role": row["role"],
@@ -932,13 +1007,43 @@ def chat_page(request: Request, thread: int | None = None):
         request=request,
         name="chat.html",
         context={
-            "threads": threads,
+            "current": current,
+            "threads": others[:THREADS_ON_CHAT_PAGE],
+            "more_threads": max(len(others) - THREADS_ON_CHAT_PAGE, 0),
             "thread_id": thread_id,
+            "deleting": deleting,
             "messages": shown,
             "pending": pending,
             "spend": spend,
             "configured": configured,
             "model": config.CHAT_MODEL,
+        },
+    )
+
+
+@app.get("/chat/threads")
+def chat_threads_page(request: Request, deleting: int | None = None):
+    """Every conversation ever had, with the rename, keep and delete controls.
+
+    Separate from the chat page because the chat page's job is the conversation
+    in front of you; managing the archive of them is a different task and should
+    not clutter it.
+    """
+    conn = db.connect()
+    try:
+        rows = _thread_list(conn)
+        if deleting not in {row["id"] for row in rows}:
+            deleting = None
+    finally:
+        conn.close()
+
+    return templates.TemplateResponse(
+        request=request,
+        name="chat_threads.html",
+        context={
+            "threads": _shown_threads(rows, request.app.state.zone),
+            "deleting": deleting,
+            "thread_id": None,
         },
     )
 
@@ -952,9 +1057,22 @@ def chat_send(request: Request, question: str = Form(...), thread: str = Form(""
     conn = db.connect()
     try:
         thread_id = int(thread) if thread.strip().isdigit() else None
+        if thread_id is not None:
+            # A thread that has been deleted since the page was rendered must not
+            # resurrect itself as an orphan row: start a fresh conversation.
+            exists = conn.execute(
+                "SELECT 1 FROM chat_threads WHERE id = ?", (thread_id,)
+            ).fetchone()
+            if exists is None:
+                thread_id = None
+
         if thread_id is None:
+            # The opening question names the conversation until it is renamed.
+            # Whitespace is collapsed first so a pasted multi-line question does
+            # not become a title with newlines in it.
             cur = conn.execute(
-                "INSERT INTO chat_threads (title) VALUES (?)", (text[:80],)
+                "INSERT INTO chat_threads (title) VALUES (?)",
+                (" ".join(text.split())[:80],),
             )
             thread_id = int(cur.lastrowid)
 
@@ -966,6 +1084,74 @@ def chat_send(request: Request, question: str = Form(...), thread: str = Form(""
         conn.close()
 
     return RedirectResponse(f"/chat?thread={thread_id}", status_code=303)
+
+
+def _require_thread(conn, thread_id: int) -> None:
+    row = conn.execute(
+        "SELECT 1 FROM chat_threads WHERE id = ?", (thread_id,)
+    ).fetchone()
+    if row is None:
+        raise HTTPException(status_code=404, detail="No such conversation")
+
+
+@app.post("/chat/{thread_id}/rename")
+def rename_thread(thread_id: int, request: Request, title: str = Form(...)):
+    """Give a conversation a name you will recognise in October."""
+    name = " ".join(title.split())[:80]
+    conn = db.connect()
+    try:
+        _require_thread(conn, thread_id)
+        # An empty box clears the name rather than storing "", so the list falls
+        # back to its placeholder instead of showing a blank line.
+        conn.execute(
+            "UPDATE chat_threads SET title = ? WHERE id = ?", (name or None, thread_id)
+        )
+    finally:
+        conn.close()
+    return _back(request)
+
+
+@app.post("/chat/{thread_id}/keep")
+def toggle_thread_kept(thread_id: int, request: Request):
+    """Kept conversations sort above the rest, however old they get."""
+    conn = db.connect()
+    try:
+        _require_thread(conn, thread_id)
+        conn.execute(
+            "UPDATE chat_threads SET pinned = 1 - pinned WHERE id = ?", (thread_id,)
+        )
+    finally:
+        conn.close()
+    return _back(request)
+
+
+@app.post("/chat/{thread_id}/delete")
+def delete_thread(thread_id: int, request: Request):
+    """Delete a conversation and its messages for good.
+
+    Reached only through the confirmation the list renders in place: this is the
+    one button in the dashboard that destroys something, and a mis-tap on a phone
+    should not be enough. The messages are deleted explicitly rather than left to
+    the foreign key's ON DELETE CASCADE, which is silently a no-op on any
+    connection where PRAGMA foreign_keys was not set.
+
+    If it is pressed by mistake, last night's backup still has the conversation —
+    docs/OPERATIONS.md covers reading one out of a restored copy.
+    """
+    conn = db.connect()
+    try:
+        _require_thread(conn, thread_id)
+        conn.execute("DELETE FROM chat_messages WHERE thread_id = ?", (thread_id,))
+        conn.execute("DELETE FROM chat_threads WHERE id = ?", (thread_id,))
+    finally:
+        conn.close()
+
+    # Never back to ?thread=<the one just deleted>. Returning to the list it was
+    # deleted from is the least surprising place to land.
+    referer = request.headers.get("referer") or ""
+    return RedirectResponse(
+        "/chat/threads" if "/chat/threads" in referer else "/chat", status_code=303
+    )
 
 
 @app.get("/chat/{thread_id}/stream")
