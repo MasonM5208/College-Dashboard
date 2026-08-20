@@ -459,6 +459,66 @@ sudo /home/mason/College-Dashboard/ops/backup.sh
 sudo apt install util-linux
 ```
 
+### The rankings look wrong since setting up Your week
+
+Almost always the capacity numbers are describing a week Mason does not have. Open
+**Your week** and read the seven-day list at the top: each day shows the hours it
+gives to coursework and what was taken out of it.
+
+- **Everything says "0.0h for coursework"** — a practice target larger than that
+  day's budget. Practice is subtracted from the budget, not from the clock, so a
+  4-hour budget with a 5-hour practice target leaves nothing.
+- **A day is far lower than expected** — a commitment is longer than intended, or
+  entered on the wrong weekday. The page lists every commitment with its day and
+  times.
+- **Everything is suddenly short on time** — usually a budget typed as total hours
+  awake in one place and coursework hours in another. The budget is coursework
+  hours only.
+- **Nothing changed at all** — the defaults are seven days of four hours, which is
+  exactly what the dashboard assumed before. That is deliberate. It changes when
+  the days are edited.
+
+Nothing here is destructive: the numbers can be changed back and the ranking
+follows immediately.
+
+### The estimate multipliers look wrong
+
+They are computed from **finished** work that was **timed**, and both halves
+matter. Check what the data actually is:
+
+```
+sqlite3 /srv/dashboard/data/dashboard.db "SELECT a.type, a.title, a.est_hours, ROUND(SUM(t.minutes)/60.0, 2) AS actual FROM assignments a JOIN time_entries t ON t.assignment_id = a.id WHERE a.status IN ('submitted','graded') AND t.ended_at IS NOT NULL GROUP BY a.id ORDER BY a.type;"
+```
+
+- **A multiplier is missing entirely** — fewer than three finished, timed pieces
+  of that kind. That is the threshold below which a multiplier is noise.
+- **One number looks absurd** — a timer left running. Find it in the query above
+  and delete that row; the multiplier is a median, so one bad entry should not
+  have moved it far, but it still counts toward the sample.
+
+```
+sqlite3 /srv/dashboard/data/dashboard.db "DELETE FROM time_entries WHERE id = 42;"
+```
+
+The multipliers recompute on the next timer stop.
+
+### A timer was left running overnight
+
+```
+sqlite3 /srv/dashboard/data/dashboard.db "SELECT id, assignment_id, started_at FROM time_entries WHERE ended_at IS NULL;"
+```
+
+There is at most one — the database enforces that. Stopping it from the dashboard
+books the whole elapsed time, which is the wrong number. Discard it instead:
+
+```
+sqlite3 /srv/dashboard/data/dashboard.db "DELETE FROM time_entries WHERE ended_at IS NULL;"
+```
+
+Then re-enter the real time by starting and stopping the timer, or leave it: an
+untimed piece of work is simply not counted toward calibration, which is better
+than counting a wrong number.
+
 ### Forwarded email has stopped arriving
 
 The status page shows **Forwarded email collection** as `stale` or `failing` when

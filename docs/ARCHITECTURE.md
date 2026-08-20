@@ -7,10 +7,12 @@ the decisions that are not obvious from reading the code, including the ones tha
 were rejected. A rejected alternative documented is a rejected alternative nobody
 has to re-investigate.
 
-Current state: **M0 through M5 built.** SPEC §12's useful core, the chat with all
-four of its tools, and the archive they read. M6 — the real capacity model, the
-start/stop timer, estimate calibration and overload mode — is not started, so
-everything is still ranked against a flat four productive hours a weekday.
+Current state: **M0 through M6 built**, with one hole: M3's reminders reach
+iCloud and appear on no device (see OPERATIONS.md's KNOWN ISSUE). Everything else
+works — Canvas ingestion, the slack-ranked Today view, the archive, the chat with
+five tools, the real capacity model, the timer, calibration and overload mode.
+M7 — grades, the "what do I need on the final" calculator, workload forecasting —
+is not started.
 
 ---
 
@@ -112,9 +114,9 @@ are pending, which covers someone running uvicorn by hand.
 `0001_core.sql` creates only the tables M1–M3 need. `0002_ingest.sql` adds what
 Canvas ingestion required, `0003_chat.sql` the two chat tables, `0004` the
 reminder ladders, `0005` the kept flag on conversations, `0006` the documents,
-their provenance, their links and the FTS5 index, and `0007` the review queue for
-collected mail. Capacity, the timer and calibration arrive with M6. Each table
-lands
+their provenance, their links and the FTS5 index, `0007` the review queue for
+collected mail, and `0008` capacity, commitments, time entries and calibration.
+Each table lands
 alongside the code that exercises it, so a mistake is caught by use rather than
 discovered months later, when fixing it would need exactly the destructive
 `ALTER`/rebuild that SPEC forbids doing casually.
@@ -700,6 +702,106 @@ It is not built, and should not be: a filter here decides what matters on Mason'
 behalf, silently, and the whole queue exists so that decision stays his. If the
 volume becomes unbearable the fix belongs in IU's Outlook, where the rule is
 visible and he wrote it.
+
+---
+
+## Capacity, calibration and overload (M6)
+
+`app/capacity.py` and `migrations/0008_capacity.sql`. This replaces the flat
+constant M2 shipped, which SPEC §9 explicitly framed as temporary: *"Ship the
+constant, then replace it with measured reality in October."*
+
+### The seeded defaults change nothing
+
+`capacity_settings` arrives as seven days of 4.0 productive hours and 0 practice —
+byte for byte the behaviour of M2's constant. A test asserts the old and new
+models agree before anything is edited.
+
+This matters more than it looks. A milestone that lands and silently re-ranks
+everything gives no way to tell a better model from a broken one, and SPEC §9 is
+explicit about the consequence of a ranking that is visibly wrong once. The
+model changes when Mason describes his week and not before.
+
+### Reconciling SPEC's two capacity models
+
+SPEC §9 asks for a per-weekday productive-hours budget *and* for commitments to be
+subtracted from wall-clock time. Doing both naively double-counts every hour of
+rehearsal. The reading implemented:
+
+```
+available(day) = min(productive_hours[weekday], unbooked_wall_clock(day))
+                 − practice_hours_target[weekday]
+```
+
+The budget is what he can sustain; the wall clock is what is physically free; the
+scarcer governs. Overlapping commitments are merged rather than summed, because a
+lesson inside a rehearsal block would otherwise subtract the same hour twice.
+
+### Practice is capacity, and that is the whole argument
+
+SPEC §9 spends a paragraph on this and it is worth preserving: practice has no due
+date, so in a deadline-driven ranking it loses every comparison, quietly, and the
+degradation is invisible for about a month. Subtracting it before anything is
+ranked means the maths protects it by default. The `/capacity` page explains this
+to Mason rather than presenting it as a setting, because an unexplained setting is
+one that gets zeroed the first busy week.
+
+### The model is injected, not imported
+
+`priority.rank` takes `available_fn` as an argument. `app/capacity.py` supplies the
+real one; the flat constant remains the default. That keeps every function in
+`priority.py` a pure function of its arguments, which is what lets the arithmetic
+be tested against hand-worked examples rather than against itself.
+
+### Calibration: median, three samples, and never a rewrite
+
+The multiplier is the **median** of `actual ÷ estimated`, not the mean: one
+assignment abandoned half-finished at 3am and timed for six hours must not
+re-price every worksheet after it. Only *finished* work counts — a part-timed task
+has logged less than its true cost by definition, and including it would conclude
+Mason overestimates, the opposite of the truth.
+
+Below three samples `trusted_multiplier` returns `None` rather than 1.0, so the
+caller has to decide what to say when there is no answer instead of presenting
+"no data" as "you estimate perfectly".
+
+**Nothing rewrites `est_hours`.** SPEC §9: *"Do not silently inflate estimates —
+an unexplained change to a number the owner typed destroys trust in the entire
+ranking."* The timer does reduce `est_hours_remaining`, which is bookkeeping
+rather than inflation, and is shown on screen.
+
+### One running timer, enforced by the database
+
+A partial unique index on `(ended_at IS NULL) WHERE ended_at IS NULL`. Two open
+timers would make every calibration figure quietly wrong, and the bug would be
+invisible until the numbers had been trusted for a month. Starting a second timer
+stops the first rather than refusing: refusing means four steps at the moment
+attention has already moved on, which is how a timer stops being used.
+
+### Overload
+
+SPEC §9's instruction is unusually direct — *"Do not soften this. Do not hide it
+behind a toggle. Do not add encouragement"* — so the implementation is literal.
+It is the top element of the default screen, in warning colours, with no toggle,
+and a test asserts the page contains none of the encouraging phrases this kind of
+feature accretes.
+
+Two decisions that shape whether it is trustworthy:
+
+- **Unestimated work is excluded from the total**, not assumed to be zero.
+  Assuming zero makes an overloaded week look survivable, which is the one
+  direction this must never be wrong in. The UI says a shortfall is a floor.
+- **An item with no known cost sorts last** among the sacrifice candidates, and
+  when *none* of the recommendations has a known cost the page says so instead of
+  ranking them. Recommending something be dropped without knowing what it costs is
+  precisely the confident-but-wrong advice that would end the feature.
+
+### `get_workload`, a fifth chat tool
+
+SPEC §10 names four. The capacity model answers a question none of them can —
+"does this week fit" — and without it the chat answered "can I finish all this by
+Thursday?" from a list of deadlines with no idea how many hours exist. SPEC's list
+is what the chat must be able to do, not a cap on what it may have.
 
 ---
 

@@ -2416,6 +2416,68 @@ archive and comes back when you search for a word in it.
 
 ---
 
+## Section 19 — Describe your week
+
+**What this does:** tells the dashboard how many hours you actually have, so that
+everything it ranks is ranked against your real life rather than a guess.
+
+**Why it matters:** until you do this, every ranking assumes four productive hours
+a day, every day, with no classes and no rehearsals. That is a reasonable starting
+guess and it is not you.
+
+**Nothing here touches the server.** No commands, no restart. Ten minutes in a
+browser.
+
+**Before you start:** the dashboard loading, and your class and rehearsal times to
+hand.
+
+**Time:** about 10 minutes.
+
+### Steps
+
+1. Open the dashboard and tap **Your week**.
+
+2. **Set the hours per day.** For each of the seven days, two numbers:
+
+   - **Budget** — hours of coursework you could really do that day. Not hours
+     awake. Be honest rather than aspirational; a number you cannot hit makes
+     everything downstream wrong in the same direction.
+   - **Practice** — hours at the instrument you intend to protect.
+
+   Tap **Save all seven**.
+
+   > A Tuesday with a full teaching day and an evening rehearsal might honestly be
+   > one hour of coursework. Writing 4 there does not create three more hours; it
+   > only makes the dashboard believe you have them.
+
+3. **Add your fixed commitments** — one per class meeting, rehearsal, lesson and
+   shift. Name, kind, day, start and finish. Add each one once; they apply every
+   week.
+
+4. **Check the seven-day list at the top of the page.** Each day shows what it
+   gives to coursework and what was taken out of it. Read it against what you know
+   about your own week. If a day looks wrong, the numbers that made it are right
+   there.
+
+5. **Open Today.** The rankings now use those hours. If the coming week does not
+   fit, the top of the screen says so in hours and names what is cheapest to drop.
+
+### What to expect
+
+Most weeks will fit. The ones that do not are the point: you find out on Sunday
+rather than on Thursday.
+
+If **everything** suddenly reads as short of time, the usual cause is a practice
+target larger than that day's budget — practice comes out of the budget, so four
+hours of budget with five hours of practice leaves nothing.
+
+### Check before continuing
+
+On **Your week**, the seven-day list at the top should match your own sense of
+your week. That is the whole test, and only you can run it.
+
+---
+
 ## You are finished
 
 Everything through Section 17 is running:
@@ -2432,17 +2494,19 @@ Everything through Section 17 is running:
 - A chat that can read all of it.
 - An archive that keeps what you were told, word for word, and finds it again.
 - Email collected on its own, waiting for you to say what is worth keeping.
+- Rankings against the hours you really have, and an honest warning when a week
+  does not fit.
 
 ### What is not built yet
 
-1. **The real capacity model** — a per-weekday budget instead of the flat four
-   hours everything is currently ranked against, and rehearsal time counted as
-   the capacity it consumes.
-2. **A start/stop timer**, so estimates get corrected by what work actually took
-   rather than by what you guessed.
-3. **Overload mode** — when a week does not fit, the dashboard saying so in plain
-   hours and naming what is cheapest to sacrifice.
-4. **Grades**, including what you need on the final.
+1. **Grades**, including a "what do I need on the final" calculator.
+2. **Workload forecasting** two to three weeks out.
+3. **Practice-hours trending.**
+
+And one thing that is built but not working: **reminders reach iCloud and appear
+on no device.** `docs/OPERATIONS.md` has the full diagnosis under KNOWN ISSUE.
+Until that is solved, do not rely on the dashboard to tell you anything — it is a
+thing you open, not a thing that taps you on the shoulder.
 
 ### Day-to-day from here
 

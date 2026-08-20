@@ -83,7 +83,7 @@ endpoint no longer read the same store. **Deferred rather than fixed**;
 `docs/OPERATIONS.md` records what was established and what to try next, including
 the calendar-event fallback that would satisfy SPEC §12's criterion.
 
-So **M0–M2 and M4–M5 are working; M3 is built but not delivering.**
+So **M0–M2 and M4–M6 are working; M3 is built but not delivering.**
 
 **M4 — Document archive: built, awaiting its first real save.** A verbatim record
 of the messages that matter, saved from the iPhone share sheet in two taps or
@@ -100,9 +100,30 @@ curated rather than exhaustive, and a whole university account is exhaustive. A
 forwarded copy of something already saved by hand is recognised as the same
 message and recorded as another route, not queued again.
 
-Next: **M6** — the real capacity model, a start/stop timer feeding estimate
-calibration, and overload mode, which SPEC calls the highest-value feature in the
-document after reminders themselves.
+**M6 — Capacity, calibration and overload: built, awaiting a real week.** The
+flat four-hours-a-weekday constant is replaced by a per-weekday budget, fixed
+weekly commitments, and a practice target that is subtracted before anything is
+ranked — because practice has no due date and would otherwise lose every
+comparison in a deadline-driven sort, invisibly, for about a month.
+
+A start/stop timer logs what work actually takes, and after three finished pieces
+of a kind the dashboard reports how far off the estimates for that kind are.
+It never rewrites a number Mason typed; it reports the multiplier and leaves the
+applying to him.
+
+**Overload mode** is the piece SPEC calls the highest-value feature in the
+document after reminders. When the next seven days need more hours than exist, the
+top of Today says so in plain hours and names what is cheapest to let slide, with
+why each one is cheap. No toggle, no softening. Unestimated work is excluded from
+the total rather than assumed free, so a shortfall is a floor.
+
+The seeded defaults reproduce M2's constant exactly, so nothing re-ranks until
+Mason describes his actual week on **Your week**.
+
+Next: **M7** — grade tracking with a "what do I need on the final" calculator,
+workload forecasting two to three weeks out, and practice-hours trending. Before
+that, M3's reminders are worth another attempt; `docs/OPERATIONS.md` records where
+that got to.
 
 Build order and the acceptance criteria for each milestone are in [SPEC.md
 §12](SPEC.md).

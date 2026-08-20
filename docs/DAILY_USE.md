@@ -70,9 +70,10 @@ spare time  =  free hours before it is due  −  hours of work left
 ```
 
 Every item shows both numbers, so you can always check the arithmetic yourself.
-"Free hours" assumes four productive hours a day, spread between 8am and 10pm.
-That is a rough constant for now; later it will be replaced by your real schedule,
-with classes, rehearsals and practice already subtracted.
+"Free hours" comes from **Your week** — your per-day budget, minus your classes
+and rehearsals, minus your practice time. Until you set that up it assumes four
+productive hours a day between 8am and 10pm, which is a rough constant rather
+than anything about you.
 
 **Negative spare time means you are already behind on that item** — there is less
 time before it is due than the work needs. It says so plainly:
@@ -304,6 +305,114 @@ bottom of Today under **Courses still named after a code**. Type a real name, ta
 
 ---
 
+## Your week, and what it will actually hold
+
+Everything on Today is ranked against how many hours you really have, not how
+many hours are in the day. **Your week** is where you tell it.
+
+### Set it up once, in about ten minutes
+
+**Hours per day.** For each day, two numbers:
+
+- **Budget** — hours of coursework you can genuinely do that day. Not hours
+  awake. Four is a normal figure; a Tuesday with a full teaching day and a
+  rehearsal might honestly be one.
+- **Practice** — hours at the instrument. This is protected. It comes out before
+  any assignment is ranked, so a deadline can never quietly eat it.
+
+That second one is deliberate and worth understanding, because it looks like a
+stray setting until you see why. Practice has no due date. In any ranking that
+sorts by urgency it loses every single comparison, every day, quietly — which is
+exactly how a performance major reaches October having not practised properly
+since August. Taking it off the top means the maths protects it without practice
+ever having to win an argument it cannot win.
+
+**Fixed commitments.** Classes, rehearsals, lessons, shifts — anything at the same
+time every week. These come out of the day before coursework is counted. Add them
+once and they apply every week.
+
+If a rehearsal stops after the concert, **switch it off** rather than deleting it.
+It probably comes back next term, and re-typing it is exactly the friction that
+ends with the model being wrong and nobody noticing.
+
+### What it does with them
+
+Each day is worth the **smaller** of your budget and what is actually unbooked,
+minus practice. A day with eight free hours and a four-hour budget gives four. A
+day with a twelve-hour rehearsal gives two, whatever the budget says. The
+**Your week** page shows all seven days with the numbers that produced each.
+
+Nothing changes until you edit it. Out of the box every day is four hours with no
+practice, which is exactly what the dashboard already assumed, so setting this up
+is the moment the rankings start being about your actual life.
+
+---
+
+## When the week does not fit
+
+If the work due in the next seven days needs more hours than exist, Today says so
+at the top, in hours:
+
+> **31 hours of work, 22 hours available.** You are 9 hours short.
+
+Then it names what is cheapest to let slide, in order, with why each one is cheap
+— a course that takes no late penalty, or an assignment worth few points.
+
+**This is the most useful thing here.** It is the calculation you would otherwise
+attempt at 1am on a Wednesday with worse information and less sleep. Nothing is
+hidden behind a toggle and nothing is softened, because a system that tells you
+everything is fine when it is not is worse than no system.
+
+Two honest limits:
+
+- **Work with no estimate is not counted.** So a shortfall is a floor — the real
+  gap can only be larger, never smaller.
+- **If nothing has points or a late policy recorded**, it says so rather than
+  guessing at which is cheapest. Filling those in on **Courses** is what turns the
+  ordering from "frees the most hours" into a real recommendation.
+
+---
+
+## The timer
+
+**Start** on Today starts a clock as well as marking the work started. **Stop**
+books the time and takes it off what is left — 90 minutes against a three-hour
+task leaves an hour and a half.
+
+The running clock stays pinned to the top of every screen. That is on purpose: a
+timer you cannot see is a timer left running overnight, and one twelve-hour
+entry distorts everything measured after it.
+
+Starting a timer on something else stops the first one automatically. You do not
+have to go and find it.
+
+### What the timer is for
+
+After three finished pieces of work of a kind, **Your week** tells you how far off
+your estimates for that kind actually are — *"papers take about 2.1× your
+estimate, over 4 timed"*. Most people underestimate papers by roughly double.
+
+**It never changes a number you typed.** It tells you the multiplier and leaves
+the applying to you. An estimate that silently doubled itself would make every
+number on the screen untrustworthy, including the ones that are right.
+
+---
+
+## Sunday, five minutes
+
+**Review** asks three questions in the order that is easiest to avoid:
+
+1. **What slipped** — overdue work, with one tap each to mark it done, let it go,
+   or move the date.
+2. **What needs an estimate** — these cannot be ranked at all without one.
+3. **What is coming**, against the hours the week actually holds.
+
+It also shows what you finished and what each piece took against what you
+guessed. That is the calibration data becoming something you can see rather than
+a number in a table.
+
+---
+
 ## Reminders on your phone
 
 Every assignment with a due date becomes one item in Apple **Reminders**, carrying
@@ -355,6 +464,8 @@ you put into it.
 | **Today** (the front page) | The daily view described above |
 | **Ask** | Questions about your schedule, your saved messages, or anything else |
 | **Archive** | Everything you have saved, and the search over it |
+| **Your week** | Hours per day, fixed commitments, and how good your estimates are |
+| **Review** | The Sunday five minutes |
 | **Review** | Forwarded mail waiting for you to keep or discard |
 | **Add work** | One assignment Canvas does not know about |
 | **Paste a syllabus** | A whole term of assignments in one go |
