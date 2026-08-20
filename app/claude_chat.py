@@ -151,6 +151,31 @@ TOOLS: list[dict[str, Any]] = [
         "input_schema": {"type": "object", "properties": {}},
     },
     {
+        "name": "get_workload",
+        "description": (
+            "Check whether the next week actually fits: total hours of work due, "
+            "hours genuinely available after classes, rehearsals and practice, and "
+            "which items are cheapest to let slide if it does not fit.\n\n"
+            "Call this for any question about whether he can finish something, how "
+            "the week looks, whether he is overloaded, what to drop, or what to do "
+            "first when several things are due. Also call it before reassuring him "
+            "about a week — the honest answer may be that it does not fit, and "
+            "saying so is more useful than encouragement.\n\n"
+            "The available hours already have his fixed commitments and his "
+            "practice target subtracted, so they are hours he could really spend on "
+            "coursework, not hours in the day."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "days": {
+                    "type": "integer",
+                    "description": "How many days ahead to look. Defaults to 7.",
+                },
+            },
+        },
+    },
+    {
         "name": "search_archive",
         "description": (
             "Search Mason's saved emails and messages by keyword. Returns matching "
@@ -267,6 +292,51 @@ def run_tool(conn: sqlite3.Connection, name: str, arguments: dict, zone: ZoneInf
             default=str,
         )
 
+    if name == "get_workload":
+        from app import capacity
+
+        days = int(arguments.get("days") or capacity.OVERLOAD_WINDOW_DAYS)
+        days = max(1, min(days, 60))
+        state = capacity.overload(conn, zone, days=days)
+        week = capacity.week_ahead(conn, zone, days=days)
+
+        return json.dumps(
+            {
+                "window_days": days,
+                "hours_of_work": state.hours_of_work,
+                "hours_available": state.hours_available,
+                "shortfall_hours": state.shortfall,
+                "overloaded": state.overloaded,
+                "items_due": state.items,
+                "days": [
+                    {
+                        "date": str(day.day),
+                        "weekday": day.weekday_name,
+                        "hours_for_coursework": day.available_hours,
+                        "hours_committed": day.committed_hours,
+                        "hours_practice": day.practice_hours,
+                    }
+                    for day in week
+                ],
+                "cheapest_to_drop": [
+                    {
+                        "id": item.id,
+                        "title": item.title,
+                        "course": item.course_name,
+                        "hours_freed": item.hours,
+                        "why_it_is_cheap": item.reason,
+                    }
+                    for item in capacity.recommended_sacrifices(state)
+                ],
+                "note": (
+                    "Available hours already exclude classes, rehearsals and his "
+                    "practice target. Work with no estimate is not counted in the "
+                    "total, so a shortfall is a floor rather than a ceiling."
+                ),
+            },
+            default=str,
+        )
+
     if name == "search_archive":
         rows = archive.search(
             conn,
@@ -354,6 +424,12 @@ totals — needs a tool call.
 work left, hours free before the deadline, and spare hours. Negative spare hours \
 means the work does not fit in the time left and he is already behind on that item. \
 Say that plainly when it is true; it is the single most useful thing you can tell him.
+- For anything about a whole week rather than one item — "can I finish this?", \
+"how bad is this week?", "what should I drop?" — call `get_workload`. It returns \
+the hours of work due against the hours that actually exist after his classes, \
+rehearsals and practice are taken out. **If the week does not fit, say so in those \
+numbers before anything else**, and name what is cheapest to drop and why. Do not \
+reassure him about a week you have not checked.
 - Never invent a deadline, a grade, or a course detail. If a tool does not have it, \
 say you do not have it.
 - He asked for honesty over encouragement. If the numbers say he cannot finish \

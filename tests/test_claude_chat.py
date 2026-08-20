@@ -545,10 +545,17 @@ def test_get_document_says_so_when_the_id_is_wrong(conn):
 
 
 def test_the_four_tools_spec_asks_for_are_all_present():
-    """SPEC §10 names exactly these four."""
-    assert {tool["name"] for tool in claude_chat.TOOLS} == {
-        "get_assignments", "get_courses", "search_archive", "get_document",
-    }
+    """SPEC §10 names four. get_workload is a fifth, added with M6.
+
+    SPEC's list is what the chat must be able to do, not a cap on what it may
+    have. The capacity model answers a question the other four cannot — "does
+    this week fit" — and leaving it out would mean the chat reassuring him about
+    a week the dashboard already knows is impossible.
+    """
+    names = {tool["name"] for tool in claude_chat.TOOLS}
+    assert {"get_assignments", "get_courses", "search_archive",
+            "get_document"} <= names
+    assert "get_workload" in names
 
 
 # --- unsourced archive claims are visible (SPEC §10) ------------------------
@@ -590,3 +597,52 @@ def test_an_answer_that_never_touched_the_archive_is_not_flagged(client, conn):
                 [{"name": "get_assignments", "input": {}}])
 
     assert "No citation" not in client.get("/chat?thread=1").text
+
+
+# --- the workload tool (M6) -------------------------------------------------
+
+
+def test_get_workload_reports_a_week_that_does_not_fit(conn):
+    conn.execute("UPDATE capacity_settings SET productive_hours = 1.0")
+    due = (datetime.now(timezone.utc) + timedelta(days=3)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    for index in range(4):
+        conn.execute(
+            "INSERT INTO assignments (course_id,title,type,due_at,est_hours,"
+            "est_hours_remaining,status,source,points_possible) "
+            "VALUES (1,?,'worksheet',?,8,8,'not_started','manual',100)",
+            (f"Item {index}", due),
+        )
+
+    output = json.loads(claude_chat.run_tool(conn, "get_workload", {}, INDIANA))
+
+    assert output["overloaded"] is True
+    # At least the 32 hours added here; the fixture has work of its own.
+    assert output["hours_of_work"] >= 32.0
+    assert output["shortfall_hours"] > 0
+    assert output["cheapest_to_drop"]
+    assert all(item["why_it_is_cheap"] for item in output["cheapest_to_drop"])
+
+
+def test_get_workload_reports_the_days_and_what_was_taken_out_of_them(conn):
+    conn.execute(
+        "INSERT INTO commitments (term_id,label,kind,weekday,start_time,end_time) "
+        "VALUES (1,'Wind Ensemble','ensemble',2,'08:00','20:00')"
+    )
+    output = json.loads(claude_chat.run_tool(conn, "get_workload", {}, INDIANA))
+
+    assert len(output["days"]) == 7
+    assert any(day["hours_committed"] > 0 for day in output["days"])
+    # The note is what stops the model reading "available" as "hours in the day".
+    assert "practice" in output["note"]
+
+
+def test_get_workload_is_honest_that_a_shortfall_is_a_floor(conn):
+    """Unestimated work is not counted, so the real gap can only be larger."""
+    output = json.loads(claude_chat.run_tool(conn, "get_workload", {}, INDIANA))
+    assert "floor" in output["note"]
+
+
+def test_the_prompt_tells_it_not_to_reassure_about_an_unchecked_week(conn):
+    instructions = claude_chat.INSTRUCTIONS.lower()
+    assert "get_workload" in instructions
+    assert "do not \nreassure" in instructions or "not reassure" in instructions.replace("\n", " ")
