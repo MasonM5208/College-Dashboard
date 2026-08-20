@@ -175,10 +175,16 @@ update the server's secrets file.
 
 ---
 
-### 6. `INGEST_BEARER_TOKEN` — saved-messages endpoint token *(needed from M4)*
+### 6. `INGEST_TOKEN` — saved-messages endpoint token
 
 **What it is:** a long random string the iPhone Shortcut sends with each saved
 message, so the server knows the request is from you.
+
+**Why it exists when the server is already private:** Tailscale keeps strangers
+off the network, but everything already *on* your tailnet is inside that fence —
+your Mac, your phone, anything you add later. The token is what stops any of them
+writing into the permanent archive, including a Shortcut you built at one in the
+morning with a typo in the address.
 
 **To create one** — run this on the server and use the output:
 
@@ -186,9 +192,15 @@ message, so the server knows the request is from you.
 openssl rand -hex 32
 ```
 
+Setting it up, including the Shortcut, is `SETUP.md` Section 17.
+
 **To replace it:** generate a new one, update the secrets file, restart the
 dashboard, and update the Shortcut on the iPhone to match. The old token stops
 working immediately, so the Shortcut fails until it is updated.
+
+**If it leaks:** the worst anyone on your tailnet could do is write junk into the
+archive, which you can delete. Replace it anyway — the archive is only worth
+having if you trust everything in it arrived because you sent it.
 
 ---
 
@@ -206,13 +218,16 @@ $25 cap turns a leak into an annoyance rather than a bill.
 
 ---
 
-### 8. VAPID keys — web push notifications *(needed from M4)*
+### 8. VAPID keys — web push notifications *(not in use)*
 
 **What they are:** a key pair identifying this dashboard to Apple's push service.
-Losing them means every device has to re-subscribe to notifications; they are not
-otherwise sensitive.
 
-Generation instructions arrive with M4.
+**You do not have these and probably never will.** Deadline reminders go through
+Apple Reminders instead (entry 5), because an iPhone drops a web-push
+registration if the app goes unopened for a few weeks — exactly what happens in
+the busy stretch when reminders matter most. SPEC §8 keeps web push in reserve for
+event-driven alerts, which are not built. If they ever are, generation
+instructions appear here.
 
 ---
 

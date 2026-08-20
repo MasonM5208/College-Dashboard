@@ -182,9 +182,12 @@ It will say **Reasoning** above longer answers; tap it to see how it worked
 something out. Below each answer is what that answer cost, and the bottom of the
 page shows the running total for the month.
 
-**It cannot see your messages or emails.** That archive is not built yet, and it
-will tell you so rather than guessing. If it ever appears to remember an email,
-that is a bug worth reporting.
+**It can read what you have saved to the archive**, and any claim it makes from a
+saved message comes with a tappable link to the original — tap it and you see the
+message itself, word for word. An answer that leans on your messages *without* a
+link is flagged with a red **No citation** warning; treat that answer as unchecked
+and go and look. It cannot see anything you have not saved, and it will say so
+rather than filling the gap.
 
 **It cannot change anything.** Marking work done, adding assignments and editing
 courses are all yours — it reads, it does not write.
@@ -223,6 +226,52 @@ had with the same three controls on each.
 One practical note about cost: because a whole conversation is re-sent on every
 question, a long one costs more per question than a fresh one. Starting a new
 conversation when the subject changes keeps answers sharper *and* the bill lower.
+
+### Save an email
+
+**On the phone:** open it, tap the share button, tap **Save to Semester**. A
+notification says **Saved to the archive.** That is the whole thing.
+
+**On the laptop:** **Archive**, then **Paste something in**. Only the message
+itself is required — subject, sender and date are filled in if you have them and
+guessed at if you do not.
+
+What gets kept is the message **exactly as it arrived**. Nothing edits it
+afterwards — not you, not the chat, not a later version of this dashboard. That
+is enforced by the database, not just by good intentions, and it is the reason the
+archive is worth anything: when your memory of a deadline disagrees with a
+professor's, this is the copy that settles it.
+
+**Save the same thing twice and it is kept once.** Before saving, the quoted reply
+chain, the signature and the "Sent from my iPhone" are stripped off and what
+remains is fingerprinted. So an email shared from Mail and the same message pasted
+out of Canvas are recognised as one, kept once, with a note of both routes. Open a
+message and look under **How it got here** to see them.
+
+There is no penalty for saving something you are not sure about. Storage is not
+the constraint; remembering to save is. Save it.
+
+### Find something you saved
+
+**Archive**, then type. Words match from the start, so `lab` finds *labs* and
+*laboratory*. Matches are highlighted in the results.
+
+Two things worth knowing:
+
+- **The subject counts for much more than the body.** A word in a subject line is
+  a far better signal than the same word buried three paragraphs down, and the
+  ranking reflects that.
+- **This is keyword search, not a question.** Search for words that would appear
+  in the message — `makeup exam`, `rescheduled`, `rubric` — not for what you want
+  to know. To ask a question, use **Ask**: it searches the archive for you and
+  cites what it finds.
+
+Tap a course chip on a result, or on the row of course buttons, to narrow a search
+to one course.
+
+**Attaching a message to a course is manual and always will be.** Nothing guesses.
+A wrong link in this archive would be worse than no link, because the whole point
+of it is that everything here is something you know to be true.
 
 ### Name a course properly
 
@@ -282,7 +331,8 @@ you put into it.
 | Screen | What it is for |
 |---|---|
 | **Today** (the front page) | The daily view described above |
-| **Ask** | Questions about your schedule, or about anything else |
+| **Ask** | Questions about your schedule, your saved messages, or anything else |
+| **Archive** | Everything you have saved, and the search over it |
 | **Add work** | One assignment Canvas does not know about |
 | **Paste a syllabus** | A whole term of assignments in one go |
 | **Courses** | Adding and editing courses, instructors, meeting times, late policies |
@@ -306,3 +356,7 @@ it reports.
 - **Nothing is ever deleted because Canvas stopped mentioning it.** If an
   assignment disappears from the feed, it is flagged rather than removed, because a
   temporary Canvas fault looks exactly like a deleted assignment.
+- **Nothing arrives in the archive on its own.** No email is collected
+  automatically — if you did not share it or paste it, it is not there. The chat
+  finding nothing means *not saved*, never *not said*, and it is written to tell
+  you which.

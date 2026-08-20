@@ -7,9 +7,10 @@ the decisions that are not obvious from reading the code, including the ones tha
 were rejected. A rejected alternative documented is a rejected alternative nobody
 has to re-investigate.
 
-Current state: **M0, M1, M2, M3 and M5 built** — SPEC §12's useful core plus the
-chat. M4 (the document archive) is not started, which is why the chat ships with
-two of its four tools.
+Current state: **M0 through M5 built.** SPEC §12's useful core, the chat with all
+four of its tools, and the archive they read. M6 — the real capacity model, the
+start/stop timer, estimate calibration and overload mode — is not started, so
+everything is still ranked against a flat four productive hours a weekday.
 
 ---
 
@@ -110,8 +111,9 @@ are pending, which covers someone running uvicorn by hand.
 
 `0001_core.sql` creates only the tables M1–M3 need. `0002_ingest.sql` adds what
 Canvas ingestion required, `0003_chat.sql` the two chat tables, `0004` the
-reminder ladders and `0005` the kept flag on conversations. Documents and
-the FTS5 index arrive with M4; capacity, the timer and calibration with M6. Each table lands
+reminder ladders, `0005` the kept flag on conversations and `0006` the documents,
+their provenance, their links and the FTS5 index. Capacity, the timer and
+calibration arrive with M6. Each table lands
 alongside the code that exercises it, so a mistake is caught by use rather than
 discovered months later, when fixing it would need exactly the destructive
 `ALTER`/rebuild that SPEC forbids doing casually.
@@ -239,8 +241,9 @@ server is unreachable. Stale data presented confidently is the failure mode this
 project is most concerned with.
 
 It exists because iOS wants a registered service worker for the page to behave as
-an installed application, and because M4's web push is delivered through its
-`push` event.
+an installed application. Web push, the other thing a service worker is for, is
+not used at all — SPEC §8 sends deadline reminders through Apple Reminders
+instead, for reasons set out under Reminders below.
 
 ---
 
@@ -417,12 +420,15 @@ can you explain the assay" — is one turn through one code path.
 
 ### Built before M3 and M4, and what that cost
 
-Pulled forward at Mason's request. Two of SPEC §10's four tools read `documents`,
-which is M4. The consequence needed designing around rather than discovering:
-asked about an email it has no tool to look up, a model reconstructs one. The
-system prompt states there is no archive and forbids guessing, and a test asserts
-that text is present. Until M4 the correct answer to "what did she email me" is "I
-cannot see your messages".
+Pulled forward at Mason's request, and it shipped for a fortnight with two of
+SPEC §10's four tools missing, because both read `documents`. The gap had to be
+designed around rather than discovered: asked about an email it has no tool to
+look up, a model reconstructs one. So the prompt stated outright that no archive
+existed and forbade guessing, and a test asserted that text was present.
+
+M4 removed that paragraph and replaced it with the citation rules. The
+replacement matters as much as the removal — a prompt that still claimed the
+archive did not exist would make the model refuse to use its own tools.
 
 ### One conversation at a time
 
@@ -485,12 +491,16 @@ The system prompt is split so the stable instructions carry the cache breakpoint
 and the volatile context follows. That ordering is required: caching is a prefix
 match, so today's date above the instructions would invalidate every request.
 
-The instruction block is around 475 tokens and the minimum is 512, so it likely
-does not cache at all — silently, with a zero in `cache_read_tokens`. Left alone
-deliberately: caching that block would save about a hundredth of a cent per
-message, and padding it to clear the threshold would cost more than it returns.
-The breakpoint stays because it is free and starts paying when M4's archive rules
-grow the prompt past the minimum.
+The instruction block was around 475 tokens against a 512-token minimum, so it
+likely did not cache at all — silently, with a zero in `cache_read_tokens`. It was
+left alone rather than padded: caching it would have saved about a hundredth of a
+cent per message.
+
+M4's archive and citation rules took it past 800 tokens, so the breakpoint that
+was doing nothing is now doing what it was put there for. This is the
+argument for placing a cache breakpoint before it pays: it costs nothing while it
+is useless, and moving one later means finding every place the prompt is
+assembled.
 
 ### Replies are Markdown, and maths is not
 
@@ -519,6 +529,85 @@ The `get_assignments` tool ranks through `app/priority.py` — the same code the
 Today view uses. Two implementations of "how much spare time is there" would
 eventually disagree, and Mason would find out mid-week, from a number the chat
 gave him that the dashboard contradicts.
+
+---
+
+## The document archive (M4)
+
+`app/archive.py` and `migrations/0006_documents.sql`. SPEC §7 gives four ways in
+and one place they land; this is the one place.
+
+### Every route converges on one function, not one endpoint
+
+SPEC §7 says the four paths "converge on one ingest endpoint and one `documents`
+insert". They converge on `archive.ingest()`. The distinction is deliberate:
+`POST /ingest` carries a bearer token for the Shortcut, and making a browser form
+carry that token would be worse than having two thin adapters over one function.
+"Build the pipeline once; adapters are thin" is the sentence that matters, and it
+holds — neither route touches `documents` itself, and a mail poller would be a
+third caller of the same function.
+
+### The hash is of a body that is never stored
+
+`documents.body` is verbatim. `documents.body_sha256` is the SHA-256 of a
+*normalised* copy that exists only long enough to be hashed: quoted reply chains
+gone, signature block gone, "Sent from my iPhone" gone, curly quotes folded to
+straight ones, whitespace collapsed, case folded.
+
+That split is the whole dedup design. Hashing what is stored would file two copies
+of everything that arrives twice, which is exactly what SPEC §7 says will happen —
+"Canvas conversations arrive both in Canvas and by email. You will double-ingest."
+A test asserts that the same message arriving via Gmail's quoting, Outlook's
+header block and an iPhone's footer produces one fingerprint, using real-shaped
+mail rather than tidy fixtures.
+
+`UNIQUE` on the hash column means a bug in the normaliser cannot quietly produce
+the duplicate the normaliser existed to prevent.
+
+### Immutability is enforced twice
+
+SPEC §5 asks for the application layer and a schema comment. There is also a
+`BEFORE UPDATE OF body, body_sha256` trigger that raises. Three lines, and it
+still holds in M6, in M7, and at a `sqlite3` prompt at one in the morning — which
+application-level enforcement does not.
+
+Everything *around* the body stays editable: a subject can be corrected, a sender
+filled in, a kind reclassified, and the FTS5 index follows. Only the record of
+what was said is frozen. Deleting a whole document is allowed, because a mis-paste
+has to be removable; what cannot happen is a message being quietly rewritten.
+
+### Two things the search had to get right
+
+**Hostile input.** FTS5's `MATCH` takes a query language, not a phrase. An
+unbalanced quote is a syntax error and `AND`, `OR`, `NOT`, `NEAR` and `*` are
+operators — all of which are ordinary things to type into a search box. Every word
+is extracted with `\w+` and re-quoted before it reaches `MATCH`, so searching
+`NEAR` finds documents instead of raising a 500.
+
+**Snippets.** `snippet()` wraps hits in markers, and those markers have to become
+`<mark>` without the surrounding message text becoming markup. The escape happens
+first and the markers are control characters (`\x02`, `\x03`) that cannot occur
+in a real message, so a body containing the literal text `<mark>` or `<script>` is
+rendered as text either way.
+
+### Course links are manual, and the columns for automatic ones exist anyway
+
+Nothing guesses which course a message belongs to. `document_links` still carries
+SPEC's `confidence` and `created_by ('auto'|'manual')` columns, because adding a
+column to a populated table later is the destructive `ALTER` CLAUDE.md says to ask
+before doing, and because the argument against guessing is a product decision
+rather than a schema one.
+
+### Citations are enforced in two independent places
+
+SPEC §10 requires both that citations be enforced in the system prompt and that
+unsourced archive claims be "a visible UI state". A prompt is an instruction, not
+a guarantee, so the page checks separately: a reply whose stored `tool_calls`
+include `search_archive` or `get_document` but whose text contains no
+`/archive/<id>` link renders with a red **No citation** strip.
+
+It is computed at render time from data already stored, so there is no new column
+and no future edit to the prompt can switch the check off by accident.
 
 ---
 

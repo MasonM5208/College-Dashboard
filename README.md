@@ -63,9 +63,10 @@ courses Canvas cannot see are represented too. See
 the assignment data, per SPEC §10's instruction not to write an intent classifier.
 Today's date, courses, and the next 14 days of deadlines with slack are injected
 into every request. Replies stream; token cost is recorded per message and the
-running monthly total is shown. Pulled ahead of M3 and M4 by request. The two
-archive tools SPEC §10 lists arrive with M4 and the table they read; until then
-the assistant states plainly that it has no message archive.
+running monthly total is shown. Pulled ahead of M3 and M4 by request, and
+completed by M4: all four of SPEC §10's tools are present, and any claim drawn
+from a saved message carries a tappable link to the verbatim original.
+Conversations are kept separate, and can be named, kept and deleted.
 
 **M3 — Reminders: built, awaiting the first real push.** Each assignment becomes
 one item in Apple Reminders carrying its whole ladder of alerts, pushed over
@@ -75,8 +76,21 @@ reminders and rebuilds them rather than moving them.
 
 With that, **SPEC §12's useful core (M0–M3) is complete.**
 
-Next: **M4**, the document archive — a verbatim, searchable record of the messages
-that matter, which also completes the chat's tool set.
+**M4 — Document archive: built, awaiting its first real save.** A verbatim record
+of the messages that matter, saved from the iPhone share sheet in two taps or
+pasted in on the laptop, and searched with FTS5 and BM25. What is stored is never
+edited — enforced by a database trigger, not only by the code. Deduplication runs
+before insert on a normalised copy, so one message arriving by two routes is kept
+once with a note of both. Course links are manual; nothing is guessed.
+
+Automatic email collection remains unavailable: the institution blocks forwarding
+out, and Gmail offers no way to pull. Capture is manual, which SPEC §7 anticipated
+— the archive is curated rather than exhaustive, and that is also why keyword
+search is enough.
+
+Next: **M6** — the real capacity model, a start/stop timer feeding estimate
+calibration, and overload mode, which SPEC calls the highest-value feature in the
+document after reminders themselves.
 
 Build order and the acceptance criteria for each milestone are in [SPEC.md
 §12](SPEC.md).

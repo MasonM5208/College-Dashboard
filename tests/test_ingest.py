@@ -297,3 +297,13 @@ def test_filtering_the_page_by_course(client, conn):
 
     assert "Bio lab" in body
     assert "Calculus lab" not in body
+
+
+def test_the_reply_carries_a_sentence_for_the_phone_to_show(client, conn):
+    """The Shortcut shows this in a notification; raw JSON would not do."""
+    body = "The recital is on Thursday."
+    first = client.post("/ingest", json={"body": body}, headers=auth())
+    second = client.post("/ingest", json={"body": body}, headers=auth())
+
+    assert first.json()["message"] == "Saved to the archive."
+    assert "Already had this one" in second.json()["message"]

@@ -1988,25 +1988,256 @@ SPEC calls the useful core.
 
 ---
 
+## Section 17 — Save emails from your phone
+
+**What this does:** puts a **Save to Semester** button in the iPhone share sheet.
+Reading an email from a professor, you tap Share, tap Save to Semester, and the
+message is kept word for word where the dashboard — and the chat — can find it.
+
+**Why this and not automatic collection:** your institution blocks forwarding out
+of the IU account, and Gmail offers no way to pull from it. So capture is manual.
+That turns out to be the right shape anyway: what you save is the handful of
+messages a term that actually matter, and searching thirty things you chose beats
+searching three thousand you did not.
+
+**What it saves:** the text of the message, exactly as it arrived, and never
+changed afterwards. That is the point of it. In November, when your memory of a
+deadline disagrees with a professor's, the archive is the copy that settles it.
+
+**Before you start:** Section 15 finished, with the chat working.
+
+**Time:** about 25 minutes, most of it building the Shortcut.
+
+### Steps
+
+1. **On the server**, make a token. This is a long random password that only your
+   phone and the dashboard know:
+
+   ```
+   ssh mason@100.x.y.z
+   ```
+
+   ```
+   hostname
+   ```
+
+   Confirm this prints your server's name before continuing.
+
+   ```
+   openssl rand -hex 32
+   ```
+
+   Expected — one long line of letters and numbers:
+
+   ```
+   3f9c2a7e41b8d05c6e2f9a13b7c48d05e1f2a3b4c5d6e7f8091a2b3c4d5e6f70
+   ```
+
+   > **Copy it now and record it as item 10 on your list.** You will type it into
+   > your phone in step 6, and after that you will not need it again. The one
+   > printed above is an example — yours will be different, and yours is the only
+   > one that will work.
+
+2. Open the secrets file:
+
+   ```
+   sudo nano /etc/college-dashboard/env
+   ```
+
+3. Add one line, with your own token from step 1 after the `=`:
+
+   ```
+   INGEST_TOKEN=3f9c2a7e41b8d05c6e2f9a13b7c48d05e1f2a3b4c5d6e7f8091a2b3c4d5e6f70
+   ```
+
+   Save and exit: `Control` and `O`, `Return`, `Control` and `X`.
+
+4. Restart so the dashboard reads it:
+
+   ```
+   cd /home/mason/College-Dashboard
+   ```
+
+   ```
+   sudo docker compose up -d
+   ```
+
+5. **Prove it works before touching your phone.** This saves a test message the
+   same way the Shortcut will. Put your own token where the example one is:
+
+   ```
+   curl -s -X POST "http://$(tailscale ip -4):8000/ingest" \
+     -H "Authorization: Bearer 3f9c2a7e41b8d05c6e2f9a13b7c48d05e1f2a3b4c5d6e7f8091a2b3c4d5e6f70" \
+     -H "Content-Type: application/json" \
+     -d '{"body":"A test message from the setup guide.","subject":"Test"}'
+   ```
+
+   Expected — one line, all on one line:
+
+   ```
+   {"ok":true,"document_id":1,"created":true,"source_added":true,"url":"/archive/1","message":"Saved to the archive."}
+   ```
+
+   `"created":true` means it was saved. Run the same command a second time and
+   `"created"` becomes `false` with `"Already had this one"` — that is
+   deduplication working, not a failure.
+
+   If you get `{"detail":"Not authorised."}`, the token in the command does not
+   match the one in the file. Check for a missing character at either end.
+
+6. **On your iPhone**, open the **Shortcuts** app. It is installed by default; if
+   you cannot find it, swipe down on the home screen and search for `Shortcuts`.
+
+   Tap **+** at the top right. You get an empty shortcut with a search box at the
+   bottom reading *Search for apps and actions*.
+
+7. Type `Get Contents of URL` in the search box and tap that action when it
+   appears. A row is added reading **Get Contents of URL** followed by a blue
+   `URL` placeholder.
+
+8. Tap the blue `URL` placeholder and type your server's address with `/ingest`
+   at the end — no spaces:
+
+   ```
+   http://100.x.y.z:8000/ingest
+   ```
+
+9. Tap **Show More** underneath that row. It expands into **Method**, **Headers**,
+   and **Request Body**.
+
+   - Tap **Method** and choose **POST**.
+
+   - Under **Headers**, tap **Add new header**. Two boxes appear, `Key` and
+     `Text`. In `Key` type:
+
+     ```
+     Authorization
+     ```
+
+     In `Text` type the word `Bearer`, then a space, then your token from step 1:
+
+     ```
+     Bearer 3f9c2a7e41b8d05c6e2f9a13b7c48d05e1f2a3b4c5d6e7f8091a2b3c4d5e6f70
+     ```
+
+     > The word `Bearer` and the single space after it both matter. Without them
+     > every save is refused.
+
+   - Tap **Request Body** and choose **JSON**. Then tap **Add new field**, choose
+     **Text**, and in the `Key` box type:
+
+     ```
+     body
+     ```
+
+   - Tap the empty value box next to `body`. A bar appears above the keyboard with
+     suggestions on it. Tap **Shortcut Input**. The box now reads *Shortcut
+     Input* in a coloured pill rather than as typed letters — if it says the words
+     as plain text, delete them and tap the suggestion instead.
+
+10. Add the confirmation, so a save that failed does not look like one that
+    worked. In the search box type `Get Dictionary Value` and tap it. Set:
+
+    - **Get** — `Value`
+    - **for** — type `message`
+    - **in** — it should already say **Contents of URL**. If it does not, tap it
+      and choose that.
+
+    Then search for `Show Notification` and tap it. Tap its text box, clear it,
+    and from the suggestion bar tap **Dictionary Value**.
+
+11. Turn on the share sheet. Tap the shortcut's name at the very top of the
+    screen, then **Details** (on some versions this is the ⓘ icon at the bottom).
+
+    - Turn **Show in Share Sheet** on.
+    - Tap **Share Sheet Types**, turn everything **off** except **Text**. Leaving
+      images on means the button appears on photos, where it cannot work.
+
+12. Rename it. Tap the name at the top, clear it, and type:
+
+    ```
+    Save to Semester
+    ```
+
+    Tap **Done**.
+
+13. **Test it.** Open Mail, open any email, tap the share button (the square with
+    an arrow out of the top), scroll down the list, and tap **Save to Semester**.
+
+    A notification appears reading **Saved to the archive.**
+
+    > The first time, iOS asks whether the shortcut may send data. Tap **Allow**.
+    > It asks once.
+
+14. Confirm it arrived. On your phone or your Mac, open the dashboard and tap
+    **Archive**. The message is at the top of the list. Tap it to see the copy
+    that was kept.
+
+### Troubleshooting
+
+- **The notification says `Not authorised`** — the token in the Shortcut does not
+  match the server's. The usual causes, in order: the word `Bearer` is missing,
+  the space after `Bearer` is missing, or a character was lost copying the token.
+  Retype the whole header rather than trying to spot the difference.
+
+- **The notification says the request could not be completed, or nothing happens
+  at all** — Tailscale is not connected on the phone. Open Tailscale and check the
+  switch is on. The dashboard is unreachable without it, on purpose.
+
+- **The notification shows raw text like `{"ok":true...`** — step 10's *Get
+  Dictionary Value* is missing or is not reading `Contents of URL`. The save
+  worked; only the confirmation is wrong.
+
+- **`Save to Semester` is not in the share sheet** — either **Show in Share
+  Sheet** is off (step 11), or you are sharing something that is not text. From a
+  photo or a PDF it will not appear. Scroll the share sheet all the way down; iOS
+  puts shortcuts near the bottom, and on the first use you may need **Edit
+  Actions** to bring it up the list.
+
+- **It says `Saving from the phone is switched off`** — `INGEST_TOKEN` is not set
+  on the server, or the dashboard was not restarted after step 3. Repeat steps 2
+  to 4.
+
+- **The same message saved twice shows once** — that is correct. Open it and look
+  at **How it got here**: it lists every route it arrived by.
+
+### Check before continuing
+
+On the dashboard, open **Archive** and type a word you know is in the test message
+from step 5. It should come back with the word highlighted.
+
+Then open **Ask** and ask something only the archive knows — *what did the test
+message say?* — and confirm the answer includes a link you can tap through to the
+original.
+
+---
+
 ## You are finished
 
-The foundation is running:
+Everything through Section 17 is running:
 
 - A private server that only your devices can reach.
 - A database with a proper structure, kept in step by migrations.
 - A dashboard on your laptop and your phone's home screen.
 - Encrypted backups every night, stored somewhere other than the server, and
   proven to restore.
+- Canvas assignments arriving on their own, every half hour.
+- A daily view ordered by how much time you actually have, not by which deadline
+  is nearest.
+- Reminders on your phone that fire whether or not the server is running.
+- A chat that can read all of it.
+- An archive that keeps what you were told, word for word, and finds it again.
 
 ### What is not built yet
 
-The dashboard currently shows its own status and nothing else. Coming next, in
-order:
-
-1. **Assignments from Canvas** — pulled in automatically every half hour.
-2. **The daily view** — what to work on, ordered by how much time you actually
-   have rather than by which deadline is nearest.
-3. **Reminders** — arriving on your phone through Apple Reminders.
+1. **The real capacity model** — a per-weekday budget instead of the flat four
+   hours everything is currently ranked against, and rehearsal time counted as
+   the capacity it consumes.
+2. **A start/stop timer**, so estimates get corrected by what work actually took
+   rather than by what you guessed.
+3. **Overload mode** — when a week does not fit, the dashboard saying so in plain
+   hours and naming what is cheapest to sacrifice.
+4. **Grades**, including what you need on the final.
 
 ### Day-to-day from here
 
@@ -2023,3 +2254,7 @@ Somewhere you will find it again:
 - The `mason` account password
 - The age private key file, `~/.age/dashboard-backup.key`
 - Your Backblaze bucket name
+
+The Claude API key, the Apple app-specific password and the ingest token all live
+on the server and nowhere else. If you lose one, you do not recover it — you
+revoke it and make a new one. `docs/SECRETS.md` says how, for each.

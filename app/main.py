@@ -964,9 +964,16 @@ async def ingest_endpoint(request: Request):
             "document_id": result.document_id,
             "created": result.created,
             "source_added": result.source_added,
-            # The Shortcut shows this, so sharing something gives back a link
-            # straight to what was saved.
             "url": f"/archive/{result.document_id}",
+            # A sentence rather than a status code, because this is what the
+            # Shortcut puts in the notification. Sharing something and getting
+            # back raw JSON tells you it worked but not what happened; "Already
+            # had this one" is the difference between trusting dedup and
+            # wondering whether you have two copies.
+            "message": (
+                "Saved to the archive." if result.created
+                else "Already had this one — nothing duplicated."
+            ),
         }
     )
 

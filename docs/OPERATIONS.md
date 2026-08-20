@@ -337,6 +337,74 @@ no readable name anywhere in it. The first time a code appears, the dashboard
 creates the course using the code as a placeholder name and marks it as needing a
 real one. Renaming arrives with M2.
 
+### Saving from the phone has stopped working
+
+The notification the Shortcut shows names the problem. In rough order of
+likelihood:
+
+- **`Not authorised`** — the token in the Shortcut and the token on the server
+  disagree. Check the server's:
+
+  ```
+  sudo grep -c '^INGEST_TOKEN=' /etc/college-dashboard/env
+  ```
+
+  `1` means the line is there. (`grep -c` counts rather than prints, so this does
+  not put the token on your screen or into your shell history.) If it is there and
+  saving still fails, rebuild the header in the Shortcut from scratch — the usual
+  cause is a missing `Bearer ` prefix or a character lost in a copy, and both are
+  nearly invisible to read back.
+
+- **The request could not be completed** — Tailscale is off on the phone. The
+  dashboard is unreachable without it, by design.
+
+- **`Saving from the phone is switched off`** — `INGEST_TOKEN` is not set, or the
+  dashboard has not been restarted since it was added:
+
+  ```
+  cd /home/mason/College-Dashboard && sudo docker compose up -d
+  ```
+
+- **Nothing at all happens, no notification** — the Shortcut's *Show Notification*
+  step is missing or lost its variable. The save may well be working; check the
+  Archive page before rebuilding anything.
+
+`SETUP.md` Section 17 has the full Shortcut, step by step.
+
+### A message was saved twice, or should have been and was not
+
+Both directions are the same mechanism, and both are worth checking rather than
+assuming.
+
+**One copy where you expected two** is normal and correct. Open it and look under
+**How it got here** — it lists every route it arrived by. Two entries there means
+deduplication did its job.
+
+**Two copies of what looks like one message** means the two versions differ
+somewhere below the reply: different quoting styles usually collapse to the same
+fingerprint, but a forwarded copy carrying an extra introduction line, or a
+message edited before pasting, genuinely is different text. Delete whichever copy
+you want gone; the other is untouched.
+
+Nothing here is silently merged after the fact. Deduplication happens once, before
+saving, and never rewrites what is already stored.
+
+### The archive is missing something you are sure you saved
+
+Search first with a different word — the search matches from the *start* of words,
+so `sched` finds *schedule* but `duled` finds nothing.
+
+If it is genuinely absent, the likeliest explanation is that the Shortcut failed
+quietly on the day. There is no automatic collection of any kind: nothing arrives
+unless it was shared or pasted, so an absence is a save that did not happen rather
+than a search that is failing.
+
+To see everything, in order, with no search involved:
+
+```
+sqlite3 /srv/dashboard/data/dashboard.db "SELECT id, ingested_at, subject FROM documents ORDER BY id DESC LIMIT 20;"
+```
+
 ### The chat has stopped answering
 
 The error shown on the page is deliberately vague, because an API error can quote
@@ -372,12 +440,22 @@ reversible: remove the line and restart.
 Historical messages keep the price of whichever model produced them — the model is
 recorded per message, so switching does not silently rewrite what the past cost.
 
-### The chat claims to remember an email
+### The chat says something about a message and does not link to it
 
-**Report this rather than working around it.** There is no message archive until
-M4, and the assistant is instructed to say so plainly instead of guessing. An
-invented email is the one failure mode this milestone was designed to prevent, and
-it means the instruction is not holding.
+The answer renders with a red **No citation** strip when this happens, so you do
+not have to notice it yourself. It means the assistant read your archive and then
+wrote a claim you cannot check in one tap, which is the failure mode the whole
+citation rule exists to prevent.
+
+**Treat that answer as unverified and open the Archive yourself.** Then report it:
+the instruction is in the system prompt and the warning is computed separately
+from the tool calls, so a recurring warning means the prompt needs strengthening,
+not that the check is broken.
+
+Worse, and rarer: an answer that describes a message **with** a plausible-looking
+link that opens the wrong document, or nothing. Report that immediately. An
+invented citation is more dangerous than an invented claim, because it looks
+checked.
 
 ### Reminders have stopped reaching the phone
 
