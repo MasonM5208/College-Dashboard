@@ -153,6 +153,29 @@
   </section>
 
   <section>
+    <h2>Archive</h2>
+    <p class="muted">
+      {{ facts.archive.documents }} message{{ '' if facts.archive.documents == 1 else 's' }} saved.
+      {%- if facts.archive.waiting %}
+        {{ facts.archive.waiting }} forwarded message(s) waiting for you to keep or
+        discard — <a href="/archive/review">review them</a>.
+      {%- endif %}
+    </p>
+    {% if not facts.archive.ingest_configured %}
+      <p class="muted">
+        Saving from the phone is off: <code>INGEST_TOKEN</code> is not set. See
+        <code>docs/SETUP.md</code> section 17.
+      </p>
+    {% endif %}
+    {% if not facts.archive.mail_configured %}
+      <p class="muted">
+        Forwarded mail is not being collected. Set the <code>MAIL_*</code> settings
+        to turn it on — see <code>docs/SETUP.md</code> section 18.
+      </p>
+    {% endif %}
+  </section>
+
+  <section>
     <h2>What is not built yet</h2>
     <p class="muted">
       The real capacity model, a start/stop timer, and the overload mode that names

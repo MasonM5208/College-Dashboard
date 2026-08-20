@@ -26,8 +26,8 @@ from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, Stre
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
-from app import (archive, canvas, claude_chat, config, db, entry, migrate,
-                 priority, reminders, scheduler, status)
+from app import (archive, canvas, claude_chat, config, db, entry, mailbox,
+                 migrate, priority, reminders, scheduler, status)
 
 log = logging.getLogger("dashboard")
 
@@ -1014,6 +1014,7 @@ def archive_page(request: Request, q: str = "", course: int | None = None):
         total = archive.count(conn)
         courses = _courses(conn)
         configured = config.ingest_configured()
+        waiting = mailbox.pending_count(conn)
     finally:
         conn.close()
 
@@ -1027,7 +1028,113 @@ def archive_page(request: Request, q: str = "", course: int | None = None):
             "courses": courses,
             "total": total,
             "ingest_configured": configured,
+            "waiting": waiting,
         },
+    )
+
+
+# How a message's provenance reads on screen. The stored values are SPEC §5's
+# enum; `gmail_poll` is its name for "collected from a mailbox", from when the
+# expected provider was Gmail.
+SOURCE_LABELS = {
+    "share_sheet": "shared from your phone",
+    "paste": "pasted in",
+    "mail_bridge": "mail bridge",
+    "gmail_poll": "forwarded email",
+}
+
+
+@app.get("/archive/review")
+def review_queue(request: Request):
+    """Mail collected automatically, waiting to be kept or thrown away.
+
+    The archive is only worth searching if everything in it is something Mason
+    decided mattered — SPEC §7's case for keyword search over vectors rests on
+    exactly that. So collected mail stops here rather than going straight in.
+    """
+    conn = db.connect()
+    try:
+        rows = mailbox.pending(conn)
+        configured = mailbox.configured()
+        total = archive.count(conn)
+    finally:
+        conn.close()
+
+    zone = request.app.state.zone
+    return templates.TemplateResponse(
+        request=request,
+        name="review.html",
+        context={
+            "messages": [
+                {
+                    "id": row["id"],
+                    "subject": row["subject"] or "(no subject)",
+                    "sender": row["sender"],
+                    "when": local_time(row["received_at"] or row["fetched_at"], zone),
+                    # Enough to judge by without opening anything. The verbatim
+                    # copy is what gets stored if it is kept.
+                    "preview": _preview(row["body"], 400),
+                }
+                for row in rows
+            ],
+            "configured": configured,
+            "total": total,
+        },
+    )
+
+
+@app.post("/archive/review/{inbound_id}/keep")
+def review_keep(inbound_id: int, request: Request):
+    conn = db.connect()
+    try:
+        mailbox.keep(conn, inbound_id)
+    except (mailbox.MailboxError, archive.ArchiveError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from None
+    finally:
+        conn.close()
+    return _back(request)
+
+
+@app.post("/archive/review/{inbound_id}/discard")
+def review_discard(inbound_id: int, request: Request):
+    conn = db.connect()
+    try:
+        mailbox.discard(conn, inbound_id)
+    finally:
+        conn.close()
+    return _back(request)
+
+
+@app.post("/archive/review/discard-all")
+def review_discard_all(request: Request):
+    """Clear a backlog in one go, for the fortnight nobody looked at this."""
+    conn = db.connect()
+    try:
+        mailbox.discard_all(conn)
+    finally:
+        conn.close()
+    return RedirectResponse("/archive/review", status_code=303)
+
+
+@app.post("/sync/mail")
+def sync_mail_now():
+    """Collect mail immediately rather than waiting for the next poll."""
+    conn = db.connect()
+    try:
+        result = mailbox.sync(conn)
+    except mailbox.MailboxError as exc:
+        return JSONResponse({"ok": False, "error": str(exc)}, status_code=503)
+    finally:
+        conn.close()
+
+    return JSONResponse(
+        {
+            "ok": True,
+            "fetched": result.fetched,
+            "waiting_for_review": result.queued,
+            "already_held": result.already_held,
+            "skipped": result.skipped,
+        }
     )
 
 
@@ -1134,7 +1241,7 @@ def document_page(
             "ingested": local_time(document["ingested_at"], zone),
             "sources": [
                 {
-                    "source": row["source"].replace("_", " "),
+                    "source": SOURCE_LABELS.get(row["source"], row["source"]),
                     "when": local_time(row["ingested_at"], zone),
                 }
                 for row in sources

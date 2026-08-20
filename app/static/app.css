@@ -508,3 +508,12 @@ mark {
   background: var(--surface);
   color: var(--text);
 }
+
+/* A queued message shows several lines rather than one: the decision to keep or
+   discard needs more than a subject, and the whole point is to make it in a
+   second without opening anything. */
+.review-preview {
+  margin-top: 0.5rem;
+  font-size: 0.9rem;
+  overflow-wrap: anywhere;
+}

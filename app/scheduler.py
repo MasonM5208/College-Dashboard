@@ -18,7 +18,7 @@ from __future__ import annotations
 import asyncio
 import logging
 
-from app import caldav_push, canvas, config, db
+from app import caldav_push, canvas, config, db, mailbox
 
 log = logging.getLogger("scheduler")
 
@@ -79,6 +79,30 @@ async def _reminder_loop() -> None:
         await asyncio.sleep(caldav_push.SYNC_INTERVAL_SECONDS)
 
 
+def poll_mail_once() -> mailbox.PollResult:
+    """One mailbox poll, start to finish. Blocking; call it in a thread."""
+    conn = db.connect()
+    try:
+        return mailbox.sync(conn)
+    finally:
+        conn.close()
+
+
+async def _mail_loop() -> None:
+    await asyncio.sleep(STARTUP_DELAY_SECONDS * 3)
+    while True:
+        try:
+            await asyncio.to_thread(poll_mail_once)
+        except mailbox.MailboxError as exc:
+            # Already recorded in sync_state and shown on the status page. A mail
+            # provider having a bad afternoon is not a fault of ours, and the loop
+            # keeps going.
+            log.warning("Mail poll failed: %s", exc)
+        except Exception:
+            log.exception("Mail poll raised an unexpected error")
+        await asyncio.sleep(mailbox.POLL_INTERVAL_SECONDS)
+
+
 def start(app) -> list[asyncio.Task]:
     """Start background jobs, returning the tasks so shutdown can cancel them."""
     tasks: list[asyncio.Task] = []
@@ -102,6 +126,18 @@ def start(app) -> list[asyncio.Task]:
         log.info(
             "CALDAV_USERNAME and CALDAV_PASSWORD are not set, so reminders will not "
             "reach your phone. See docs/SETUP.md section 16."
+        )
+
+    if mailbox.configured():
+        tasks.append(asyncio.create_task(_mail_loop(), name="mail-poll"))
+        log.info(
+            "Collecting forwarded mail every %d minutes.",
+            mailbox.POLL_INTERVAL_SECONDS // 60,
+        )
+    else:
+        log.info(
+            "MAIL_IMAP_HOST, MAIL_USERNAME and MAIL_PASSWORD are not all set, so no "
+            "mail will be collected. See docs/SETUP.md section 18."
         )
 
     return tasks

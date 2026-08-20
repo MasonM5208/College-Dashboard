@@ -193,10 +193,19 @@ def test_an_empty_body_is_refused(conn):
         archive.ingest(conn, "   \n\n", source="paste")
 
 
-def test_a_body_that_is_nothing_but_quoting_is_refused(conn):
+def test_a_body_with_no_message_left_in_it_is_refused(conn):
     """Otherwise every such arrival normalises to "" and shares one hash."""
+    headers_only = (
+        "-----Original Message-----\n"
+        "From: Ana Ruiz <aruiz@iu.edu>\n"
+        "Sent: Monday, September 1, 2026 9:14 AM\n"
+        "To: Mason Miller\n"
+    )
     with pytest.raises(archive.ArchiveError, match="quoted reply"):
-        archive.ingest(conn, "> the original\n> and more of it\n", source="paste")
+        archive.ingest(conn, headers_only, source="paste")
+
+    with pytest.raises(archive.ArchiveError, match="quoted reply"):
+        archive.ingest(conn, "--\nAna Ruiz\nDepartment of Biology\n", source="paste")
 
 
 def test_an_enormous_body_is_refused(conn):
@@ -375,3 +384,76 @@ def test_the_same_message_can_be_saved_again_after_deleting_it(conn):
 
     again = archive.ingest(conn, FROM_GMAIL, source="paste")
     assert again.created is True
+
+
+# --- forwarded mail ---------------------------------------------------------
+#
+# Automatic collection forwards a message rather than composing it, so the whole
+# message arrives *below* a quote marker. Read naively that is "a reply with
+# nothing above the quote", which strips everything and leaves nothing to save.
+# These are the wrappers the four common clients actually produce.
+
+OUTLOOK_FORWARD = (
+    "-----Original Message-----\n"
+    "From: Ana Ruiz <aruiz@iu.edu>\n"
+    "Sent: Monday, September 1, 2026 9:14 AM\n"
+    "To: Mason Miller\n"
+    "Subject: Lab 3\n\n"
+) + REPLY
+
+GMAIL_FORWARD = (
+    "---------- Forwarded message ---------\n"
+    "From: Ana Ruiz <aruiz@iu.edu>\n"
+    "Date: Mon, 1 Sep 2026 at 09:14\n"
+    "Subject: Lab 3\n"
+    "To: Mason Miller <mm@iu.edu>\n\n"
+) + REPLY
+
+APPLE_FORWARD = (
+    "Begin forwarded message:\n\n"
+    "From: Ana Ruiz <aruiz@iu.edu>\n"
+    "Subject: Lab 3\n"
+    "Date: 1 September 2026 at 09:14:02 EDT\n"
+    "To: Mason Miller <mm@iu.edu>\n\n"
+) + REPLY
+
+QUOTED_FORWARD = "> Hi Mason,\n>\n> Lab 3 has moved to Friday. Bring the notebook.\n>\n> Ana\n"
+
+
+@pytest.mark.parametrize(
+    "wrapper",
+    [OUTLOOK_FORWARD, GMAIL_FORWARD, APPLE_FORWARD, QUOTED_FORWARD],
+    ids=["outlook", "gmail", "apple", "angle-brackets"],
+)
+def test_a_forwarded_copy_has_the_same_fingerprint_as_the_original(wrapper):
+    """What makes automatic collection safe to switch on.
+
+    Without this, every forwarded message is either refused outright — nothing
+    survives the quote stripping — or filed as a second copy of something already
+    saved by hand.
+    """
+    assert archive.body_hash(wrapper) == archive.body_hash(REPLY)
+
+
+def test_a_forwarded_copy_is_recorded_as_another_route_not_another_document(conn):
+    by_hand = archive.ingest(conn, FROM_PHONE, source="share_sheet")
+    forwarded = archive.ingest(conn, OUTLOOK_FORWARD, source="gmail_poll")
+
+    assert forwarded.document_id == by_hand.document_id
+    assert archive.count(conn) == 1
+    assert sorted(row["source"] for row in archive.sources_for(conn, by_hand.document_id)) == [
+        "gmail_poll", "share_sheet",
+    ]
+
+
+def test_the_forwarded_copy_is_stored_whole(conn):
+    """Only the fingerprint ignores the wrapper. The stored copy keeps all of it."""
+    result = archive.ingest(conn, OUTLOOK_FORWARD, source="gmail_poll")
+    assert archive.get(conn, result.document_id)["body"] == OUTLOOK_FORWARD
+
+
+def test_a_reply_above_a_forward_keeps_the_reply(conn):
+    """The unwrapping must not fire when there is something above the marker."""
+    body = "Mason — see below, this changes your Friday.\n\n" + OUTLOOK_FORWARD
+    assert "changes your friday" in archive.normalize(body)
+    assert archive.body_hash(body) != archive.body_hash(REPLY)

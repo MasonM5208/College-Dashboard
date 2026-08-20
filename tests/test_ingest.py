@@ -249,8 +249,8 @@ def test_the_document_page_names_every_route_it_arrived_by(client, conn):
 
     page = client.get(f"/archive/{result.document_id}").text
 
-    assert "share sheet" in page
-    assert "paste" in page
+    assert "shared from your phone" in page
+    assert "pasted in" in page
     assert "2 different routes" in page
 
 

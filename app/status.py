@@ -25,6 +25,9 @@ TIMESTAMP_FMT = "%Y-%m-%dT%H:%M:%SZ"
 STALE_AFTER_HOURS = {
     "canvas_ics": 3.0,
     "caldav_push": 3.0,
+    # Forwarded mail is not urgent, and a mailbox that has been quiet for an
+    # afternoon is normal. Six hours is long enough not to cry wolf.
+    "mail_poll": 6.0,
     "backup": 30.0,
 }
 DEFAULT_STALE_AFTER_HOURS = 24.0
@@ -33,6 +36,7 @@ DEFAULT_STALE_AFTER_HOURS = 24.0
 SOURCE_LABELS = {
     "canvas_ics": "Canvas calendar feed",
     "caldav_push": "Reminders sent to your iPhone",
+    "mail_poll": "Forwarded email collection",
     "backup": "Nightly backup",
 }
 
@@ -144,6 +148,21 @@ def reminder_summary(conn: sqlite3.Connection) -> dict:
     }
 
 
+def archive_summary(conn: sqlite3.Connection) -> dict:
+    """How much is saved, and how much is waiting to be decided on."""
+    one = lambda sql: int(conn.execute(sql).fetchone()[0])  # noqa: E731
+    from app import mailbox
+
+    return {
+        "documents": one("SELECT COUNT(*) FROM documents"),
+        "waiting": one(
+            "SELECT COUNT(*) FROM inbound_messages WHERE state = 'pending'"
+        ),
+        "ingest_configured": config.ingest_configured(),
+        "mail_configured": mailbox.configured(),
+    }
+
+
 def collect(conn: sqlite3.Connection, now: datetime | None = None) -> dict:
     """Everything the status page and /healthz report."""
     now = now or datetime.now(timezone.utc)
@@ -169,6 +188,7 @@ def collect(conn: sqlite3.Connection, now: datetime | None = None) -> dict:
         "ingest": ingest_summary(conn),
         "chat_spend": claude_chat.month_to_date_cost(conn, now),
         "reminders": reminder_summary(conn),
+        "archive": archive_summary(conn),
         "schema_version": migrate.current_version(conn),
         "pending_migrations": outstanding,
         "database_path": str(config.DB_PATH),

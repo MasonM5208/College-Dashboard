@@ -62,6 +62,13 @@ _SEPARATOR_RE = re.compile(r"^\s*[_-]{5,}\s*$")
 # "-----Original Message-----", with any number of dashes and any capitalisation.
 _ORIGINAL_MESSAGE_RE = re.compile(r"^\s*-*\s*original message\s*-*\s*$", re.I)
 
+# Gmail's "---------- Forwarded message ---------" and Apple Mail's "Begin
+# forwarded message:". Both put text in the middle of the rule, so the plain
+# separator pattern above does not catch them.
+_FORWARDED_RE = re.compile(
+    r"^\s*-*\s*(begin\s+)?forwarded message\s*:?\s*-*\s*$", re.I
+)
+
 # Gmail and Apple Mail: "On Mon, 1 Sep 2026 at 09:14, Ana Ruiz <a@iu.edu> wrote:".
 # Long ones wrap, so the "wrote:" may land on the following line — handled by the
 # caller, which is why this only anchors the start.
@@ -111,7 +118,7 @@ def _quote_starts_at(lines: list[str]) -> int | None:
 
         if stripped.startswith(">"):
             return index
-        if _ORIGINAL_MESSAGE_RE.match(line):
+        if _ORIGINAL_MESSAGE_RE.match(line) or _FORWARDED_RE.match(line):
             return index
 
         # A separator rule only counts as a quote marker when a quoted block
@@ -154,6 +161,60 @@ def _strip_trailer(lines: list[str]) -> list[str]:
     return lines[:end]
 
 
+# Header lines at the top of a forwarded block, which carry the routing rather
+# than the message.
+_ANY_HEADER_RE = re.compile(
+    r"^\s*(From|Sent|Date|To|Cc|Bcc|Subject|Reply-To|Importance):\s", re.I
+)
+
+
+def _unwrap_forward(lines: list[str]) -> list[str]:
+    """Pull the original message out of a forwarding wrapper.
+
+    Auto-forwarding produces a body whose *entire* content sits below a quote
+    marker: the separator, then a From/Sent/To block, then what was actually
+    written. Treating that as "a reply with nothing above the quote" would leave
+    nothing at all, and refusing it would make automatic collection useless.
+
+    So the marker and its header block are dropped and the rest is kept. That has
+    a second, better effect: a message forwarded automatically and the same
+    message saved by hand from the phone reduce to the same text, which is what
+    lets deduplication recognise them as one.
+    """
+    body = []
+    seen_content = False
+    for line in lines:
+        if not seen_content:
+            stripped = line.lstrip("> ").rstrip()
+            if (
+                not stripped
+                or _SEPARATOR_RE.match(line)
+                or _ORIGINAL_MESSAGE_RE.match(stripped)
+                or _FORWARDED_RE.match(stripped)
+                or _ANY_HEADER_RE.match(stripped)
+                or _WROTE_END_RE.search(stripped)
+            ):
+                continue
+            seen_content = True
+        # Quoted forwards prefix every line; the prefix is routing, not content.
+        body.append(re.sub(r"^\s*>+\s?", "", line))
+    return body
+
+
+def _content_lines(lines: list[str]) -> list[str]:
+    """The lines that are the message itself."""
+    cut = _quote_starts_at(lines)
+    if cut is None:
+        return _strip_trailer(lines)
+
+    above = _strip_trailer(lines[:cut])
+    if any(line.strip() for line in above):
+        # An ordinary reply: what was written sits above what was quoted.
+        return above
+
+    return _strip_trailer(_unwrap_forward(lines[cut:]))
+
+
 def normalize(body: str) -> str:
     """The comparable form of a message, used for hashing and never stored.
 
@@ -165,11 +226,7 @@ def normalize(body: str) -> str:
     text = unicodedata.normalize("NFKC", body).translate(_PUNCTUATION)
     lines = text.replace("\r\n", "\n").replace("\r", "\n").split("\n")
 
-    cut = _quote_starts_at(lines)
-    if cut is not None:
-        lines = lines[:cut]
-
-    lines = _strip_trailer(lines)
+    lines = _content_lines(lines)
 
     # Case-folded and whitespace-collapsed. Two genuinely different messages do
     # not differ only in capitalisation or line wrapping, but two copies of one

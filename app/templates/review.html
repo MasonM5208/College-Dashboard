@@ -1,0 +1,84 @@
+{% extends "base.html" %}
+
+{% block title %}Waiting for review — Semester Dashboard{% endblock %}
+{% block heading %}Waiting for review{% endblock %}
+
+{% block subheading %}
+  <p class="muted">
+    <a href="/archive">Archive</a> · <a href="/">Today</a> · <a href="/chat">Ask</a>
+  </p>
+{% endblock %}
+
+{% block content %}
+
+  {% if not configured %}
+    <div class="banner banner-bad">
+      <strong>Mail collection is not switched on.</strong>
+      Nothing arrives here until <code>MAIL_IMAP_HOST</code>,
+      <code>MAIL_USERNAME</code> and <code>MAIL_PASSWORD</code> are set on the
+      server — see <code>docs/SETUP.md</code> section 18.
+    </div>
+  {% endif %}
+
+  {% if messages %}
+    <p class="muted">
+      Forwarded mail, collected automatically and waiting for you to say whether it
+      belongs in the archive. <strong>Keep</strong> puts it in, word for word, and
+      makes it searchable. <strong>Discard</strong> means it is never offered
+      again — the message stays in your mailbox either way.
+    </p>
+
+    <ul class="stack">
+      {% for item in messages %}
+        <li class="card document">
+          <div class="card-title">{{ item.subject }}</div>
+          <div class="muted document-meta">
+            {%- if item.sender %}{{ item.sender }} · {% endif -%}
+            {{ item.when }}
+          </div>
+          <div class="muted review-preview">{{ item.preview }}</div>
+          <div class="row-actions">
+            <form method="post" action="/archive/review/{{ item.id }}/keep">
+              <button type="submit" class="chip chip-done">Keep</button>
+            </form>
+            <form method="post" action="/archive/review/{{ item.id }}/discard">
+              <button type="submit" class="chip">Discard</button>
+            </form>
+          </div>
+        </li>
+      {% endfor %}
+    </ul>
+
+    <section>
+      <h2>All of it at once</h2>
+      <p class="muted">
+        For the fortnight nobody looked at this. Discarding everything waiting is
+        not destructive — the mail is still in your mailbox, and anything you
+        later want can be saved by hand from the phone.
+      </p>
+      <form method="post" action="/archive/review/discard-all">
+        <button type="submit" class="chip chip-bad">
+          Discard all {{ messages | length }}
+        </button>
+      </form>
+    </section>
+  {% elif configured %}
+    <p class="muted">
+      Nothing waiting. Forwarded mail appears here within about fifteen minutes of
+      arriving, and the archive holds
+      {{ total }} message{{ '' if total == 1 else 's' }} you have kept.
+    </p>
+  {% endif %}
+
+  <section>
+    <h2>Why this asks rather than just filing everything</h2>
+    <p class="muted">
+      Searching works because the archive is small and every message in it is one
+      you decided mattered. A whole university mail account poured in would bury
+      the thing you were looking for under parking notices, and the search has no
+      way to tell the difference. Thirty seconds here keeps the other side worth
+      using.
+    </p>
+  </section>
+
+{% endblock %}

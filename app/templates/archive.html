@@ -19,8 +19,17 @@
     <button type="submit">Search</button>
   </form>
 
+  {% if waiting %}
+    <div class="banner banner-ok">
+      <strong>{{ waiting }} forwarded message{{ '' if waiting == 1 else 's' }} waiting.</strong>
+      They are not searchable until you say they belong here.
+      <a href="/archive/review">Review them</a>.
+    </div>
+  {% endif %}
+
   <div class="row-actions archive-actions">
     <a class="chip" href="/archive/add">Paste something in</a>
+    {% if waiting %}<a class="chip chip-done" href="/archive/review">Review {{ waiting }}</a>{% endif %}
     {% if query or course_id %}<a class="chip" href="/archive">Clear</a>{% endif %}
   </div>
 

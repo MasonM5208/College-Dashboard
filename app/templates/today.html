@@ -36,7 +36,8 @@
 
 {% block subheading %}
   <p class="muted">
-    {{ now_display }} · <a href="/chat">Ask</a> · <a href="/archive">Archive</a> ·
+    {{ now_display }} · <a href="/chat">Ask</a> ·
+    <a href="/archive">Archive{% if facts.archive.waiting %} ({{ facts.archive.waiting }}){% endif %}</a> ·
     <a href="/add">Add work</a> · <a href="/batch">Paste a syllabus</a> ·
     <a href="/courses">Courses</a> · <a href="/assignments">Everything</a> ·
     <a href="/status">Status</a>
