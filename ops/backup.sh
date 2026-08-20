@@ -18,6 +18,17 @@
 
 set -euo pipefail
 
+# CRON DOES NOT GIVE YOU YOUR LOGIN PATH. It runs jobs with PATH=/usr/bin:/bin,
+# and runuser lives in /usr/sbin. That difference cost three nights of backups:
+# the script worked perfectly when run by hand — sudo's secure_path includes
+# /usr/sbin — and failed every night at 03:15 with "runuser is not installed",
+# which was true only in the sense that cron could not see it.
+#
+# Setting PATH explicitly is the standard fix for any script that runs from both
+# a terminal and a crontab, and it belongs at the top of this one permanently.
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+export PATH
+
 # Never turn on tracing in here. `set -x` would print the contents of the secrets
 # file to the log.
 
@@ -58,16 +69,53 @@ db_owner() {
   stat -c %U "$DB" 2>/dev/null || stat -f %Su "$DB"
 }
 
+db_owner_uid() {
+  stat -c %u:%g "$DB" 2>/dev/null || stat -f %u:%g "$DB"
+}
+
+# Captured once, before anything runs as root. Reading it later would risk
+# reporting root as the owner after a fallback write.
+DB_OWNER="$(db_owner 2>/dev/null || echo "")"
+DB_OWNER_IDS="$(db_owner_uid 2>/dev/null || echo "")"
+
+# Absolute paths, because "is runuser installed" and "can this shell find
+# runuser" are different questions and only the first one matters here. Three
+# candidates rather than one so that a minimal image without util-linux still
+# gets a backup instead of a log line.
+find_runner() {
+  local candidate
+  for candidate in /usr/sbin/runuser /sbin/runuser /usr/bin/runuser; do
+    [ -x "$candidate" ] && { printf 'runuser:%s' "$candidate"; return 0; }
+  done
+  for candidate in /usr/bin/setpriv /bin/setpriv; do
+    [ -x "$candidate" ] && { printf 'setpriv:%s' "$candidate"; return 0; }
+  done
+  for candidate in /bin/su /usr/bin/su; do
+    [ -x "$candidate" ] && { printf 'su:%s' "$candidate"; return 0; }
+  done
+  return 1
+}
+
+# Returns non-zero rather than calling die(). The failure recorder calls this,
+# and a recorder that can die is a recorder that stays silent about exactly the
+# failures worth recording — which is what happened here.
 as_db_owner() {
-  local owner
-  owner="$(db_owner)"
-  if [ "$(id -un)" = "$owner" ]; then
+  local runner kind path
+  if [ "$(id -un)" = "$DB_OWNER" ]; then
     "$@"
-  elif command -v runuser >/dev/null 2>&1; then
-    runuser -u "$owner" -- "$@"
-  else
-    die "cannot drop privileges to ${owner}: runuser is not installed"
+    return
   fi
+
+  runner="$(find_runner)" || return 127
+  kind="${runner%%:*}"
+  path="${runner#*:}"
+
+  case "$kind" in
+    runuser) "$path" -u "$DB_OWNER" -- "$@" ;;
+    setpriv) "$path" --reuid "${DB_OWNER_IDS%%:*}" --regid "${DB_OWNER_IDS##*:}" \
+               --clear-groups -- "$@" ;;
+    su)      "$path" -s /bin/sh -c "$(printf '%q ' "$@")" "$DB_OWNER" ;;
+  esac
 }
 
 # --- record the outcome in sync_state ---------------------------------------
@@ -81,13 +129,37 @@ as_db_owner() {
 # account identifiers. The full detail goes to this script's log, which is
 # root-only.
 
+# Write to the database, dropping privileges if that is possible and going ahead
+# without if it is not.
+#
+# The fallback exists because of how this script failed in August 2026: it could
+# not drop privileges, so it died — including inside the very function whose job
+# was to record that it had died. The status page therefore showed the backup as
+# "stale" with no error and zero failures, which reads as "has not run lately"
+# rather than "has failed every night this week". A recorder that can be stopped
+# by the failure it is recording is not a recorder.
+db_write() {
+  if as_db_owner sqlite3 "$DB" "$1"; then
+    return 0
+  fi
+
+  log "warning: could not drop privileges to ${DB_OWNER}; writing as $(id -un)"
+  sqlite3 "$DB" "$1" || return 1
+
+  # WAL leaves -wal and -shm beside the database. Written by root they would lock
+  # the container out of its own database, so hand them straight back.
+  if [ -n "$DB_OWNER_IDS" ]; then
+    chown "$DB_OWNER_IDS" "$DB" "$DB-wal" "$DB-shm" 2>/dev/null || true
+  fi
+}
+
 record_sync_state() {
   local error="$1"
   local now
   now="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 
   if [ -z "$error" ]; then
-    as_db_owner sqlite3 "$DB" "
+    db_write "
       INSERT INTO sync_state (source, last_attempt_at, last_success_at,
                               last_error, consecutive_failures)
       VALUES ('backup', '$now', '$now', NULL, 0)
@@ -98,7 +170,7 @@ record_sync_state() {
         consecutive_failures = 0;" || log "warning: could not update sync_state"
   else
     local escaped=${error//\'/\'\'}
-    as_db_owner sqlite3 "$DB" "
+    db_write "
       INSERT INTO sync_state (source, last_attempt_at, last_success_at,
                               last_error, consecutive_failures)
       VALUES ('backup', '$now', NULL, '$escaped', 1)
@@ -140,6 +212,13 @@ for tool in sqlite3 age rclone; do
   command -v "$tool" >/dev/null 2>&1 \
     || die "${tool} is not installed. Install it with: sudo apt install sqlite3 age rclone"
 done
+
+# Checked here rather than discovered halfway through, so the log says what is
+# wrong instead of "exit 127 during copying the database". This is the failure
+# that ran silently for three nights in August 2026.
+if [ "$(id -un)" != "$DB_OWNER" ] && ! find_runner >/dev/null; then
+  die "cannot run commands as ${DB_OWNER}: no runuser, setpriv or su found on PATH (${PATH}). Install util-linux with: sudo apt install util-linux"
+fi
 
 : "${BACKUP_AGE_RECIPIENT:?BACKUP_AGE_RECIPIENT is not set. It is the age public key backups are encrypted to — see docs/SECRETS.md}"
 : "${BACKUP_B2_BUCKET:?BACKUP_B2_BUCKET is not set — see docs/SECRETS.md}"

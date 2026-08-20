@@ -896,11 +896,18 @@ folder its database will live in.
    sudo mkdir -p /srv/dashboard/data /srv/dashboard/backups
    ```
 
-4. Give yourself ownership of the data folder, so the dashboard can write to it:
+4. Give the data folder to the dashboard, so it can write to it:
 
    ```
-   sudo chown mason:mason /srv/dashboard/data
+   sudo chown -R 1000:1000 /srv/dashboard/data
    ```
+
+   > **The number is deliberate, and `mason` is not a substitute for it.** The
+   > dashboard runs inside its container as user id 1000, and that id may well
+   > belong to a different account on your server — Vultr's Debian images often
+   > ship a `linuxuser` account holding it. Handing the folder to `mason` when
+   > `mason` is id 1001 leaves the dashboard unable to open its own database,
+   > with the unhelpful error `unable to open database file`.
 
    Neither command prints anything when it works.
 

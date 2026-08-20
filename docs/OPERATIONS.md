@@ -405,6 +405,60 @@ To see everything, in order, with no search involved:
 sqlite3 /srv/dashboard/data/dashboard.db "SELECT id, ingested_at, subject FROM documents ORDER BY id DESC LIMIT 20;"
 ```
 
+### The backup has not run, but shows no error
+
+This is the shape of it on the status page: **Nightly backup — stale**, no error,
+zero failures, and `last_success_at` the same as `last_attempt_at`. That
+combination means the script has not *attempted* since then, so look at its own
+log rather than at the dashboard:
+
+```
+sudo tail -30 /var/log/dashboard-backup.log
+```
+
+The log is the authority here. Cron is almost certainly running the job on time;
+what fails is usually the script.
+
+Check that cron has the job and is running at all:
+
+```
+sudo crontab -l
+```
+
+```
+sudo systemctl status cron --no-pager
+```
+
+The backup line must be in **root's** crontab — `sudo crontab -l`, not
+`crontab -l` — because the encryption key and the Backblaze credentials are in a
+root-only file.
+
+**`cannot run commands as ... no runuser, setpriv or su found on PATH`** — this
+happened in August 2026 and is worth knowing about, because it is the shape of
+every cron failure that "works when I run it by hand".
+
+Cron does not give a job your login `PATH`. It uses `/usr/bin:/bin`, and
+`runuser` lives in `/usr/sbin`. Run by hand under `sudo`, the script found it and
+worked perfectly; run by cron at 03:15, it could not, and died before copying
+anything. `ops/backup.sh` now sets `PATH` explicitly, so pulling the latest code
+is the fix:
+
+```
+cd /home/mason/College-Dashboard && git pull
+```
+
+Then run it once by hand to confirm, rather than waiting for 03:15:
+
+```
+sudo /home/mason/College-Dashboard/ops/backup.sh
+```
+
+**If the tool really is missing:**
+
+```
+sudo apt install util-linux
+```
+
 ### Forwarded email has stopped arriving
 
 The status page shows **Forwarded email collection** as `stale` or `failing` when
@@ -695,8 +749,12 @@ a damaged backup over a working database turns one problem into two.
 4. Give it to the right owner, or the dashboard cannot write to it:
 
    ```
-   sudo chown mason:mason /srv/dashboard/data/dashboard.db
+   sudo chown 1000:1000 /srv/dashboard/data/dashboard.db
    ```
+
+   The number, not `mason`: the dashboard runs as user id 1000 inside its
+   container, which on this server belongs to a different account. See
+   `SETUP.md` Section 8 step 4.
 
 5. Start up again:
 
