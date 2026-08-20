@@ -400,7 +400,9 @@ def test_a_successful_canvas_poll_is_logged(db_path, monkeypatch, caplog):
 # --- the reminder claim is not overstated -----------------------------------
 
 
-def test_the_status_page_does_not_claim_reminders_are_on_the_phone(client, db_path):
+def test_the_status_page_does_not_claim_reminders_are_on_the_phone(
+    client, db_path, monkeypatch
+):
     """August 2026: iCloud accepted twelve to-dos that reached no device.
 
     The page counted successful writes and called them "alerts on your phone",
@@ -408,6 +410,11 @@ def test_the_status_page_does_not_claim_reminders_are_on_the_phone(client, db_pa
     failure is stale data presented confidently, and a dashboard that says the
     reminders are handled when they are not is exactly that.
     """
+    # The section only renders when reminders are switched on, which is the
+    # state the wording has to be right in.
+    monkeypatch.setenv("CALDAV_USERNAME", "someone@example.com")
+    monkeypatch.setenv("CALDAV_PASSWORD", "not-a-real-secret")
+
     conn = db.connect(db_path)
     try:
         conn.execute(
