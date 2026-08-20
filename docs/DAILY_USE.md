@@ -251,6 +251,28 @@ message and look under **How it got here** to see them.
 There is no penalty for saving something you are not sure about. Storage is not
 the constraint; remembering to save is. Save it.
 
+### Deal with the review queue
+
+IU's Outlook forwards your mail to a mailbox the dashboard reads. What it finds
+does **not** go into the archive — it waits for you to say whether it belongs
+there. The **Archive** link on Today shows a number when something is waiting.
+
+**Keep** puts the message in, word for word, and makes it searchable. **Discard**
+means the dashboard never offers it again. Neither touches your actual mailbox.
+
+Expect to discard most of it. You are forwarding an entire university account, so
+most of what arrives is a parking notice. That is the arrangement working, not
+failing: the value is in the handful you keep, because searching thirty things you
+chose beats searching three thousand you did not.
+
+If it has piled up, **Discard all** at the bottom of the review page clears it.
+Nothing is lost — the mail is still in your mailbox, and anything you later want
+can be saved by hand from the phone.
+
+**Something you already saved appears anyway?** Worth reporting. The dashboard is
+meant to recognise a forwarded copy of something you saved from the share sheet
+and record it as another route rather than asking again.
+
 ### Find something you saved
 
 **Archive**, then type. Words match from the start, so `lab` finds *labs* and
@@ -333,6 +355,7 @@ you put into it.
 | **Today** (the front page) | The daily view described above |
 | **Ask** | Questions about your schedule, your saved messages, or anything else |
 | **Archive** | Everything you have saved, and the search over it |
+| **Review** | Forwarded mail waiting for you to keep or discard |
 | **Add work** | One assignment Canvas does not know about |
 | **Paste a syllabus** | A whole term of assignments in one go |
 | **Courses** | Adding and editing courses, instructors, meeting times, late policies |
@@ -356,7 +379,7 @@ it reports.
 - **Nothing is ever deleted because Canvas stopped mentioning it.** If an
   assignment disappears from the feed, it is flagged rather than removed, because a
   temporary Canvas fault looks exactly like a deleted assignment.
-- **Nothing arrives in the archive on its own.** No email is collected
-  automatically — if you did not share it or paste it, it is not there. The chat
-  finding nothing means *not saved*, never *not said*, and it is written to tell
-  you which.
+- **Nothing enters the archive on its own.** Forwarded mail is *collected*
+  automatically but never *archived* automatically — it waits in the review queue
+  until you keep it. So the chat finding nothing means *not kept*, never *not
+  said*, and it is written to tell you which.

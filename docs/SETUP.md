@@ -2212,6 +2212,203 @@ original.
 
 ---
 
+## Section 18 — Collect emails automatically
+
+**What this does:** IU's Outlook forwards your mail to a mailbox used for nothing
+else, and the dashboard reads that mailbox every fifteen minutes. What it finds
+waits in a review queue until you keep or discard it.
+
+**Why a queue instead of just filing everything:** search works here because the
+archive is small and every message in it is one you decided mattered. Pour a whole
+university mail account in and the thing you are looking for ends up under parking
+notices and dining-hall menus, with no way for the search to tell the difference.
+Keeping is one tap. Discarding is one tap. It is thirty seconds a day, and it is
+what keeps the other side worth using.
+
+**Why a separate mailbox:** the dashboard signs into whatever account you point it
+at and reads it. Pointing it at your personal email would mean it reads your
+personal email. A new account that has never received anything else has no such
+question hanging over it, and it needs no filters or folder rules to work.
+
+**Before you start:** Section 17 finished, with saving from the phone working.
+
+**Time:** about 30 minutes.
+
+### Steps
+
+1. **Make the mailbox.** Create a new free email account somewhere that supports
+   IMAP with an app password — Gmail and Outlook.com both do. Use it for nothing
+   else, ever.
+
+   Write the address down as **item 11** on your list.
+
+2. **Turn on two-factor authentication on that new account**, then create an **app
+   password** for it. Both providers require the first before offering the second.
+
+   - **Gmail:** <https://myaccount.google.com/security> → 2-Step Verification, then
+     <https://myaccount.google.com/apppasswords>.
+   - **Outlook.com:** <https://account.microsoft.com/security> → Advanced security
+     options → App passwords.
+
+   > **This is not the account's own password, and the account's own password will
+   > not work here.** An app password is a separate one you can revoke on its own,
+   > exactly like the Apple one from Section 16. It is **shown once** — copy it now
+   > and record it as **item 12**.
+
+3. **Set up the forwarding in IU's Outlook.** Sign in to your IU email in a browser
+   at <https://outlook.office.com>, then:
+
+   - Open **Settings** (the gear, top right) → **Mail** → **Forwarding**.
+   - Turn **Enable forwarding** on.
+   - Put the address from step 1 in the box.
+   - Tick **Keep a copy of forwarded messages**, so your IU mailbox still has
+     everything.
+   - **Save.**
+
+   Send yourself a test email at your IU address and confirm it arrives at the new
+   one before continuing. If it does not, nothing later in this section can work.
+
+4. **On the server**, open the secrets file:
+
+   ```
+   ssh mason@100.x.y.z
+   ```
+
+   ```
+   hostname
+   ```
+
+   Confirm this prints your server's name before continuing.
+
+   ```
+   sudo nano /etc/college-dashboard/env
+   ```
+
+5. Add three lines. `MAIL_IMAP_HOST` depends on the provider — `imap.gmail.com`
+   for Gmail, `outlook.office365.com` for Outlook.com:
+
+   ```
+   MAIL_IMAP_HOST=imap.gmail.com
+   MAIL_USERNAME=the-new-address@gmail.com
+   MAIL_PASSWORD=the-app-password-from-step-2
+   ```
+
+   Save and exit: `Control` and `O`, `Return`, `Control` and `X`.
+
+6. Restart:
+
+   ```
+   cd /home/mason/College-Dashboard
+   ```
+
+   ```
+   sudo docker compose up -d --build
+   ```
+
+7. **Check the connection before anything is read.** This signs in, lists the
+   folders and stops — it collects nothing and marks nothing as read:
+
+   ```
+   sudo docker compose run --rm app python -m app.mailbox --probe
+   ```
+
+   Expected — four steps, ending with the folder it would read:
+
+   ```
+   Mail server:  imap.gmail.com:993
+   Signing in as: the-new-address@gmail.com
+
+     step 1  connecting and signing in
+     step 2  signed in
+     step 3  6 folder(s) on the account:
+             INBOX
+             [Gmail]/All Mail
+             [Gmail]/Sent Mail
+             [Gmail]/Spam
+             [Gmail]/Trash
+             [Gmail]/Drafts
+     step 4  reading 'INBOX': 3 message(s) in it
+
+     Mail would be collected from: INBOX
+     Nothing has been read or changed by this check.
+   ```
+
+8. **Collect for the first time**, rather than waiting a quarter of an hour:
+
+   ```
+   curl -s -X POST "http://$(tailscale ip -4):8000/sync/mail"
+   ```
+
+   Expected:
+
+   ```
+   {"ok":true,"fetched":3,"waiting_for_review":3,"already_held":0,"skipped":0}
+   ```
+
+   `already_held` counts messages that were already in your archive because you
+   had saved them by hand — those are recorded as having arrived a second way
+   rather than asked about again.
+
+9. **Review what arrived.** Open the dashboard and tap **Archive**, then
+   **Review**. Each message shows who sent it, when, and the first few lines. Tap
+   **Keep** for anything worth having; tap **Discard** for the rest.
+
+   Discarding does not delete anything from your actual mailbox. It only means the
+   dashboard stops offering it.
+
+### What to expect day to day
+
+Mail arrives in the queue within about fifteen minutes. The **Archive** link on
+Today shows a number when something is waiting, so there is nothing to remember to
+check.
+
+Most of what arrives will be worth discarding, and that is normal — you are
+forwarding an entire university account. The handful you keep are the ones the
+chat can then cite in October.
+
+### Troubleshooting
+
+- **`The mail server refused the sign-in`** — the password in the secrets file is
+  the account's own password rather than an app password, or two-factor
+  authentication is not turned on so the app password was never really issued.
+  Redo step 2.
+
+- **`Could not reach the mail server`** — `MAIL_IMAP_HOST` is wrong, or the
+  provider needs IMAP switched on. Gmail: <https://mail.google.com> → Settings →
+  Forwarding and POP/IMAP → **Enable IMAP**.
+
+- **The probe works but nothing is ever collected** — the forwarding in step 3 is
+  not on, or is sending somewhere else. Send yourself a test at your IU address
+  and check it lands in the new mailbox.
+
+- **Mail arrives in the mailbox but not in the queue** — if the provider files
+  forwarded mail somewhere other than the inbox, add a fourth line naming that
+  folder, using a name from the probe's step 3 exactly as printed:
+
+  ```
+  MAIL_FOLDER=Semester
+  ```
+
+- **The queue is enormous after a break** — **Discard all** at the bottom of the
+  review page clears it in one go. Nothing is lost from your mailbox, and anything
+  you later want can still be saved by hand from the phone.
+
+- **Something you already saved by hand appears in the queue anyway** — that is a
+  deduplication miss, and it is worth reporting rather than shrugging at. The two
+  copies differ somewhere below the reply. Keep whichever you prefer and say what
+  the message looked like.
+
+### Check before continuing
+
+```
+curl -s -X POST "http://$(tailscale ip -4):8000/sync/mail"
+```
+
+Then open **Archive → Review**, keep one message, and confirm it appears in the
+archive and comes back when you search for a word in it.
+
+---
+
 ## You are finished
 
 Everything through Section 17 is running:
@@ -2227,6 +2424,7 @@ Everything through Section 17 is running:
 - Reminders on your phone that fire whether or not the server is running.
 - A chat that can read all of it.
 - An archive that keeps what you were told, word for word, and finds it again.
+- Email collected on its own, waiting for you to say what is worth keeping.
 
 ### What is not built yet
 

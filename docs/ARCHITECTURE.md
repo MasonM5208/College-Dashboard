@@ -111,9 +111,10 @@ are pending, which covers someone running uvicorn by hand.
 
 `0001_core.sql` creates only the tables M1–M3 need. `0002_ingest.sql` adds what
 Canvas ingestion required, `0003_chat.sql` the two chat tables, `0004` the
-reminder ladders, `0005` the kept flag on conversations and `0006` the documents,
-their provenance, their links and the FTS5 index. Capacity, the timer and
-calibration arrive with M6. Each table lands
+reminder ladders, `0005` the kept flag on conversations, `0006` the documents,
+their provenance, their links and the FTS5 index, and `0007` the review queue for
+collected mail. Capacity, the timer and calibration arrive with M6. Each table
+lands
 alongside the code that exercises it, so a mistake is caught by use rather than
 discovered months later, when fixing it would need exactly the destructive
 `ALTER`/rebuild that SPEC forbids doing casually.
@@ -608,6 +609,97 @@ include `search_archive` or `get_document` but whose text contains no
 
 It is computed at render time from data already stored, so there is no new column
 and no future edit to the prompt can switch the check off by accident.
+
+---
+
+## SPEC §13's open items, resolved
+
+Both were to be settled before M4, and both now are.
+
+1. **Gmail "Check mail from other accounts"** — unavailable. Gmail offers no such
+   pull, so the path SPEC named does not exist.
+2. **Mac Mail bridge** — not needed. It was the fallback for exactly this, and it
+   required the MacBook awake and online, which the arrangement below does not.
+
+The path that works was not on SPEC's list: IU's Outlook can auto-forward out,
+even though it blocks the forwarding SPEC §2 recorded as unavailable. The two are
+different permissions, and only one of them is switched off.
+
+---
+
+## Collecting mail (M4, added after the fact)
+
+`app/mailbox.py`. SPEC §7 lists a Gmail POP poll as the automatic path and marks
+it **Test first**; §13 says to resolve it before M4. It resolved negatively —
+Gmail offers no such pull — and M4 shipped manual-only. Then Mason found that IU's
+Outlook can auto-forward, which reopens the same door from the other side: forward
+to a mailbox used for nothing else, and read that mailbox over IMAP.
+
+### A queue, not a pipe
+
+Collected mail lands in `inbound_messages` and waits. Nothing here writes to
+`documents`.
+
+The reason is the same one SPEC §7 uses to reject vectors: keyword search works
+because the archive is "curated rather than exhaustive — roughly the few dozen
+messages per semester that actually matter, not thousands including every listserv
+blast". A whole university account piped into `documents` would remove that
+premise, and the failure would be gradual and hard to name — searches quietly
+getting worse over a term.
+
+It is also the same shape as M1's review queue for Canvas events whose course
+cannot be identified (SPEC §6.4). Nothing is discarded by the machine, and nothing
+is admitted by it either.
+
+**Discarded rows are kept**, in the `discarded` state. Deleting them would mean
+the next poll saw the message as new and asked again, which is the fastest way to
+train someone to ignore a queue.
+
+### The normaliser bug this found
+
+A forwarded message puts the *entire* body below a quote marker. The original
+`normalize` read that as "a reply with nothing above the quote", stripped
+everything, and produced an empty string — so `ingest` refused every forwarded
+message outright. Automatic collection would have collected nothing, and the tests
+that existed all passed, because every fixture was a reply.
+
+`_content_lines` now falls back: when nothing survives above the marker, the
+wrapper and its header block are dropped and what is below is kept. The second
+effect is the more valuable one — Outlook's `-----Original Message-----`, Gmail's
+`---------- Forwarded message ---------`, Apple Mail's `Begin forwarded message:`
+and plain `>` quoting all now reduce to the same fingerprint as the message saved
+by hand from the share sheet. A forwarded copy of something already archived is
+therefore recorded as another provenance row rather than queued a second time,
+which is what stops the queue asking about things Mason has already dealt with.
+
+### Details that will look arbitrary later
+
+- **`UIDVALIDITY` is part of the cursor.** A mailbox that is rebuilt reissues UIDs
+  from 1; without it, message 1 of the new mailbox looks like message 1 of the old
+  one and is skipped forever. When it changes, the mailbox is re-read from the
+  start, which is safe only because the hash check catches everything already
+  decided on — and that is asserted by a test.
+- **The folder is selected read-only.** Collecting must not mark mail as read in a
+  mailbox somebody may also be looking at.
+- **`MAX_PER_POLL` is 40.** A first run against a term's backlog should not hold a
+  connection open for minutes or produce a queue of four hundred items in one go.
+- **The provenance value is `gmail_poll`.** SPEC §5 fixes four values in a CHECK
+  constraint and that is its name for "collected from a mailbox", from when the
+  expected provider was Gmail. Widening a CHECK means rebuilding the table, which
+  is the destructive migration CLAUDE.md says to ask before writing. It reads as
+  "forwarded email" in the interface.
+- **HTML mail is converted by a 30-line `HTMLParser` subclass**, not a library.
+  It is not a renderer and does not try to be: drop `script`/`style`/`head`, turn
+  block tags into newlines, keep the text. The result only has to be readable and
+  searchable.
+
+### Rejected: filtering here instead of at the forwarding end
+
+An obvious optimisation is a rule that only queues mail from known instructors.
+It is not built, and should not be: a filter here decides what matters on Mason's
+behalf, silently, and the whole queue exists so that decision stays his. If the
+volume becomes unbearable the fix belongs in IU's Outlook, where the rule is
+visible and he wrote it.
 
 ---
 

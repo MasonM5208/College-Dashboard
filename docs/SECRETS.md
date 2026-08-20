@@ -204,6 +204,32 @@ having if you trust everything in it arrived because you sent it.
 
 ---
 
+### 6a. `MAIL_IMAP_HOST`, `MAIL_USERNAME`, `MAIL_PASSWORD` — the forwarding mailbox
+
+**What they are:** the address and app password of the mailbox your IU mail is
+auto-forwarded to. The dashboard signs in and reads it every fifteen minutes.
+
+**`MAIL_PASSWORD` must be an app password, not the account's own password.** Both
+Gmail and Outlook.com require two-factor authentication to be on before they will
+issue one. Setting all of this up is `SETUP.md` Section 18.
+
+**Use a mailbox that receives nothing else.** The dashboard reads whatever account
+these point at, so pointing them at your personal email means it reads your
+personal email. A dedicated account removes the question rather than answering it.
+
+**Optional:** `MAIL_FOLDER` names the folder to read, defaulting to `INBOX`. Only
+needed if your provider files forwarded mail somewhere else.
+
+**To replace them:** revoke the app password with the provider, issue a new one,
+update the file, restart. Nothing is lost — collection resumes from where it
+stopped.
+
+**If they leak:** whoever has them can read that mailbox, which holds a forwarded
+copy of your university mail. Revoke the app password immediately; it can be
+revoked on its own without changing the account password.
+
+---
+
 ### 7. `CLAUDE_API_KEY` — chat access *(needed from M5)*
 
 **What it is:** the key that lets the dashboard ask Claude questions. It is billed

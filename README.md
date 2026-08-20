@@ -83,10 +83,13 @@ edited — enforced by a database trigger, not only by the code. Deduplication r
 before insert on a normalised copy, so one message arriving by two routes is kept
 once with a note of both. Course links are manual; nothing is guessed.
 
-Automatic email collection remains unavailable: the institution blocks forwarding
-out, and Gmail offers no way to pull. Capture is manual, which SPEC §7 anticipated
-— the archive is curated rather than exhaustive, and that is also why keyword
-search is enough.
+**Automatic collection, with a review queue.** IU's Outlook can auto-forward, so
+mail is forwarded to a mailbox used for nothing else and read over IMAP every
+fifteen minutes. What arrives waits to be kept or discarded rather than entering
+the archive — SPEC §7's case for keyword search rests on the archive being
+curated rather than exhaustive, and a whole university account is exhaustive. A
+forwarded copy of something already saved by hand is recognised as the same
+message and recorded as another route, not queued again.
 
 Next: **M6** — the real capacity model, a start/stop timer feeding estimate
 calibration, and overload mode, which SPEC calls the highest-value feature in the

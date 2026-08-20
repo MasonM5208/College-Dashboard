@@ -405,6 +405,55 @@ To see everything, in order, with no search involved:
 sqlite3 /srv/dashboard/data/dashboard.db "SELECT id, ingested_at, subject FROM documents ORDER BY id DESC LIMIT 20;"
 ```
 
+### Forwarded email has stopped arriving
+
+The status page shows **Forwarded email collection** as `stale` or `failing` when
+this happens, with the reason beside it. To see it now rather than waiting:
+
+```
+cd /home/mason/College-Dashboard
+```
+
+```
+sudo docker compose run --rm app python -m app.mailbox --probe
+```
+
+That signs in, lists the folders and stops. It reads nothing and marks nothing.
+
+- **`The mail server refused the sign-in`** — the app password was revoked, or
+  expired, or the account's own password is in the file instead. Issue a new app
+  password and replace `MAIL_PASSWORD`. `SECRETS.md` entry 6a.
+
+- **`Could not reach the mail server`** — the provider is down, or IMAP was
+  switched off on the account. Gmail switches it off by itself if the account is
+  unused for a long stretch.
+
+- **The probe succeeds but nothing new arrives** — the forwarding at IU's end has
+  stopped. Institutions reset forwarding rules; check
+  <https://outlook.office.com> → Settings → Mail → Forwarding. Send yourself a
+  test at your IU address to confirm.
+
+- **`no folder called ...`** — the provider renamed or moved the folder. The
+  probe lists the real names; put one of them in `MAIL_FOLDER`.
+
+To collect immediately rather than waiting for the next poll:
+
+```
+curl -s -X POST "http://$(tailscale ip -4):8000/sync/mail"
+```
+
+### The review queue has hundreds of things in it
+
+Normal after a break — a whole university account forwards a lot. **Discard all**
+at the bottom of the review page clears it in one go, and nothing is lost from
+your actual mailbox.
+
+If it fills faster than it is worth reading even day to day, the fix is at the
+forwarding end rather than here: narrow what IU's Outlook forwards with a rule, so
+only mail from your instructors is sent on. The dashboard deliberately has no
+rules of its own — a filter here would silently decide what matters, and the queue
+exists precisely so that decision stays yours.
+
 ### The chat has stopped answering
 
 The error shown on the page is deliberately vague, because an API error can quote
