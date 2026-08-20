@@ -124,8 +124,20 @@ def _parse(value: str | None) -> datetime | None:
         return None
 
 
-def rank(rows, zone: ZoneInfo, now: datetime | None = None) -> list[Ranked]:
+def rank(
+    rows,
+    zone: ZoneInfo,
+    now: datetime | None = None,
+    available_fn=None,
+) -> list[Ranked]:
     """Order assignments by how little room is left, least first.
+
+    `available_fn(now, due, zone) -> float` supplies the capacity model. It
+    defaults to the flat constant this module ships, and M6 passes the real one
+    from app/capacity.py. Injecting it rather than importing it keeps every
+    function here a pure function of its arguments — which is what lets the
+    arithmetic be tested directly, and SPEC §9 is blunt about why that matters:
+    the first time this is visibly wrong is the last time it is trusted.
 
     Ordering, in the order the tie-breaks apply:
 
@@ -138,6 +150,7 @@ def rank(rows, zone: ZoneInfo, now: datetime | None = None) -> list[Ranked]:
     at it, which SPEC §9 forbids.
     """
     now = now or datetime.now(timezone.utc)
+    hours_available = available_fn or available_hours
     ranked: list[Ranked] = []
 
     for row in rows:
@@ -150,7 +163,7 @@ def rank(rows, zone: ZoneInfo, now: datetime | None = None) -> list[Ranked]:
         if hours_left is None:
             hours_left = row["est_hours"]
 
-        hours_free = available_hours(now, due, zone) if due else None
+        hours_free = hours_available(now, due, zone) if due else None
 
         slack = None
         if due is not None and hours_left is not None:
