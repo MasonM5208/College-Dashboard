@@ -457,3 +457,116 @@ def test_missing_credentials_are_reported_by_name(conn, monkeypatch):
     monkeypatch.delenv("CALDAV_PASSWORD", raising=False)
     with pytest.raises(caldav_push.CalDavError, match="CALDAV_USERNAME"):
         caldav_push.sync(conn, INDIANA)
+
+
+# --- reading the list back --------------------------------------------------
+#
+# The dashboard recording a successful push and the iPhone showing nothing are
+# both true at once surprisingly often. `--list` exists to split "it never
+# reached Apple" from "it reached Apple and the phone is not showing it", which
+# have completely different fixes and cannot be told apart from this end
+# otherwise.
+
+CONTENTS_XML = """<?xml version="1.0"?>
+<d:multistatus xmlns:d="DAV:">
+  <d:response>
+    <d:href>/12345/calendars/reminders/</d:href>
+    <d:propstat><d:prop><d:displayname>Reminders</d:displayname></d:prop></d:propstat>
+  </d:response>
+  <d:response>
+    <d:href>/12345/calendars/reminders/dashboard-1%40semester-dashboard.ics</d:href>
+    <d:propstat><d:prop><d:getetag>"a1"</d:getetag></d:prop></d:propstat>
+  </d:response>
+  <d:response>
+    <d:href>/12345/calendars/reminders/dashboard-2%40semester-dashboard.ics</d:href>
+    <d:propstat><d:prop><d:getetag>"a2"</d:getetag></d:prop></d:propstat>
+  </d:response>
+  <d:response>
+    <d:href>/12345/calendars/reminders/buy-milk.ics</d:href>
+    <d:propstat><d:prop><d:getetag>"b1"</d:getetag></d:prop></d:propstat>
+  </d:response>
+</d:multistatus>"""
+
+
+class ListingServer(FakeServer):
+    def __call__(self, request, timeout=None):
+        if request.get_method() == "PROPFIND" and "/reminders/" in request.full_url:
+            self.requests.append(("PROPFIND", request.full_url, None, {}))
+            return _Response(207, CONTENTS_XML)
+        return super().__call__(request, timeout)
+
+
+@pytest.fixture
+def listing_server(monkeypatch):
+    fake = ListingServer()
+    monkeypatch.setattr(caldav_push.urllib.request, "urlopen", fake)
+    monkeypatch.setenv("CALDAV_URL", "https://caldav.example.com")
+    monkeypatch.setenv("CALDAV_USERNAME", "mason@example.com")
+    monkeypatch.setenv("CALDAV_PASSWORD", PASSWORD)
+    return fake
+
+
+def test_the_listing_separates_our_items_from_the_owners_own(listing_server):
+    names = caldav_push.list_todos(
+        "https://caldav.example.com/12345/calendars/reminders/",
+        "mason@example.com", PASSWORD,
+    )
+
+    assert len(names) == 3
+    ours = [name for name in names if name.startswith("dashboard-")]
+    assert len(ours) == 2
+    # A reminder Mason typed himself must not be counted as one of ours.
+    assert "buy-milk.ics" in names
+
+
+def test_the_collection_itself_is_not_counted_as_an_item(listing_server):
+    names = caldav_push.list_todos(
+        "https://caldav.example.com/12345/calendars/reminders/",
+        "mason@example.com", PASSWORD,
+    )
+    assert not any(name.endswith("reminders") for name in names)
+
+
+def test_reading_the_list_back_writes_nothing(listing_server):
+    caldav_push.list_todos(
+        "https://caldav.example.com/12345/calendars/reminders/",
+        "mason@example.com", PASSWORD,
+    )
+    methods = {verb for verb, _, _, _ in listing_server.requests}
+    assert methods == {"PROPFIND"}
+
+
+def test_the_list_flag_reports_what_apple_holds(listing_server, capsys):
+    assert caldav_push.main(["--list"]) == 0
+
+    out = capsys.readouterr().out
+    assert "3 item(s)" in out
+    assert "2 of them from this dashboard" in out
+    # And tells him where to look next, since the problem is then on the phone.
+    assert "iCloud" in out
+    assert "Apple ID" in out
+
+
+def test_the_list_flag_says_so_when_nothing_of_ours_is_there(monkeypatch, capsys):
+    empty = CONTENTS_XML.replace("dashboard-", "someone-elses-")
+
+    class Empty(ListingServer):
+        def __call__(self, request, timeout=None):
+            if request.get_method() == "PROPFIND" and "/reminders/" in request.full_url:
+                return _Response(207, empty)
+            return FakeServer.__call__(self, request, timeout)
+
+    monkeypatch.setattr(caldav_push.urllib.request, "urlopen", Empty())
+    monkeypatch.setenv("CALDAV_URL", "https://caldav.example.com")
+    monkeypatch.setenv("CALDAV_USERNAME", "mason@example.com")
+    monkeypatch.setenv("CALDAV_PASSWORD", PASSWORD)
+
+    assert caldav_push.main(["--list"]) == 0
+
+    out = capsys.readouterr().out
+    assert "did" in out and "not land" in out
+
+
+def test_the_list_flag_never_prints_the_password(listing_server, capsys):
+    caldav_push.main(["--list"])
+    assert PASSWORD not in capsys.readouterr().out

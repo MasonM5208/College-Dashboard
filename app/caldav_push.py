@@ -300,6 +300,42 @@ def discover(url: str, username: str, password: str, trace=None) -> str:
     return chosen.url
 
 
+_PROPFIND_CONTENTS = """<?xml version="1.0" encoding="utf-8" ?>
+<d:propfind xmlns:d="DAV:">
+  <d:prop><d:getetag/><d:displayname/></d:prop>
+</d:propfind>
+"""
+
+
+def list_todos(collection: str, username: str, password: str) -> list[str]:
+    """What Apple actually holds in the list, read back over CalDAV.
+
+    This exists to settle one question that nothing else can: the dashboard
+    recording a successful PUT and the iPhone showing nothing are both true at
+    once surprisingly often — wrong Apple ID, Reminders switched off in iCloud
+    settings, a list the phone is not displaying. Reading back splits "it never
+    reached Apple" from "it reached Apple and the phone is not showing it", and
+    those have completely different fixes.
+
+    Returns the file names in the collection. Reads only.
+    """
+    _, body = _request(
+        "PROPFIND", collection, username, password, _PROPFIND_CONTENTS,
+        depth="1", content_type="application/xml; charset=utf-8",
+    )
+
+    names = []
+    for response in ET.fromstring(body).findall("d:response", NS):
+        href = response.find("d:href", NS)
+        if href is None or not href.text:
+            continue
+        name = href.text.strip().rstrip("/").rsplit("/", 1)[-1]
+        # The collection itself comes back as the first response; skip it.
+        if name.endswith(".ics"):
+            names.append(name)
+    return names
+
+
 def collection_url(conn: sqlite3.Connection, username: str, password: str, url: str) -> str:
     """The list to write to, discovered once and remembered.
 
@@ -597,6 +633,8 @@ def main(argv: list[str] | None = None) -> int:
                         help="find the reminders list and stop. Writes nothing.")
     parser.add_argument("--dry-run", action="store_true",
                         help="print the to-do that would be sent, and stop.")
+    parser.add_argument("--list", action="store_true", dest="list_them",
+                        help="read back what Apple is actually holding. Writes nothing.")
     args = parser.parse_args(argv)
 
     logging.basicConfig(level=logging.INFO, format="%(message)s")
@@ -610,7 +648,7 @@ def main(argv: list[str] | None = None) -> int:
     print(f"\nReminders server: {url}")
     print(f"Signing in as:    {username}\n")
 
-    if args.probe or not args.dry_run:
+    if args.probe or args.list_them or not args.dry_run:
         try:
             found = discover(url, username, password,
                              trace=lambda step, text: print(f"  {step}  {text}"))
@@ -618,6 +656,40 @@ def main(argv: list[str] | None = None) -> int:
             print(f"\n  FAILED: {exc}\n")
             return 1
         print(f"\n  Reminders will be written to:\n    {found}\n")
+
+    if args.list_them:
+        try:
+            names = list_todos(found, username, password)
+        except CalDavError as exc:
+            print(f"  FAILED reading the list back: {exc}\n")
+            return 1
+
+        ours = [name for name in names if name.startswith("dashboard-")]
+        print(f"  Apple is holding {len(names)} item(s) in that list, "
+              f"{len(ours)} of them from this dashboard.\n")
+        for name in ours[:40]:
+            print(f"    {name}")
+
+        if ours:
+            print()
+            print("  They are on Apple's servers. If the iPhone is not showing them,")
+            print("  the problem is on the phone rather than here:")
+            print()
+            print("    1. Settings -> your name -> iCloud -> See All -> Reminders")
+            print("       must be ON. With it off, the Reminders app shows only")
+            print("       lists stored on the phone itself.")
+            print("    2. The Apple ID on the phone must be the same one named")
+            print("       above. A second Apple ID is the usual explanation.")
+            print("    3. In Reminders, tap Lists (top left) and look for the list")
+            print("       named above. It may be there under a name you did not")
+            print("       expect.")
+        else:
+            print()
+            print("  Nothing from this dashboard is in that list, so the pushes did")
+            print("  not land where the dashboard thinks they did. Send the whole of")
+            print("  this output on.")
+        print()
+        return 0
 
     if args.dry_run:
         conn = db.connect()

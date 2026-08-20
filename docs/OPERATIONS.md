@@ -583,6 +583,41 @@ way.
   sudo docker compose run --rm app python -c "from app import db; c=db.connect(); c.execute(\"UPDATE sync_state SET cursor=NULL WHERE source='caldav_push'\"); c.close()"
   ```
 
+### The dashboard says reminders were sent, but the phone shows none
+
+**Tailscale is not involved.** Reminders reach the phone through iCloud, over the
+ordinary internet. A working tailnet says nothing about this either way.
+
+The status page saying `on_phone: 36` means the dashboard's writes to Apple were
+accepted. That and an empty Reminders app can both be true. Settle which by
+reading back what Apple is actually holding:
+
+```
+cd /home/mason/College-Dashboard
+```
+
+```
+sudo docker compose run --rm app python -m app.caldav_push --list
+```
+
+It writes nothing. Two possible answers:
+
+**"Apple is holding N item(s), M of them from this dashboard"**, with M above
+zero — they arrived, and the problem is on the phone. In order of likelihood:
+
+1. **Settings → your name → iCloud → See All → Reminders is off.** With it off,
+   the Reminders app shows only lists stored on the phone itself and never
+   mentions that anything is missing. This is the usual answer.
+2. **The phone is signed into a different Apple ID** from the one in
+   `CALDAV_USERNAME`, which the command prints at the top.
+3. **The list is there under a name you did not expect.** The command names the
+   list it wrote to. In Reminders, tap **Lists** at the top left and look for it.
+4. **The Reminders app has not synced.** Open it, pull down, wait.
+
+**"Nothing from this dashboard is in that list"** — the writes went somewhere
+other than where the dashboard believes. Send the whole output on; the collection
+it chose is printed in step 5 and that is where the fault is.
+
 ### An alert fired at the wrong time, or one never came
 
 Check what the dashboard thinks it scheduled:
