@@ -328,3 +328,48 @@ def test_the_review_shows_what_was_finished_with_what_it_took(client, conn):
 
     assert "Finished thing" in body
     assert "took 3.0h" in body
+
+
+# --- generated study sessions on screen -------------------------------------
+
+
+def test_a_generated_session_says_it_was_generated(client, conn):
+    """Work that appeared on its own and does not admit it is indistinguishable
+    from work he forgot adding — a much worse thing to believe about your list."""
+    due = (datetime.now(timezone.utc) + timedelta(days=14)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    conn.execute(
+        "INSERT INTO assignments (course_id,title,type,due_at,est_hours,"
+        "est_hours_remaining,status,source) "
+        "VALUES (1,'Genetics midterm','exam',?,8,8,'not_started','manual')", (due,)
+    )
+    capacity.generate_study_sessions(conn, __import__("zoneinfo").ZoneInfo(config.TZ))
+
+    body = client.get("/").text
+
+    assert "Study for Genetics midterm" in body
+    assert "Made automatically from an exam" in body
+    assert "Stop making these for that exam" in body
+
+
+def test_refusing_the_sessions_from_the_page(client, conn):
+    from zoneinfo import ZoneInfo
+
+    due = (datetime.now(timezone.utc) + timedelta(days=14)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    cur = conn.execute(
+        "INSERT INTO assignments (course_id,title,type,due_at,est_hours,"
+        "est_hours_remaining,status,source) "
+        "VALUES (1,'Midterm','exam',?,8,8,'not_started','manual')", (due,)
+    )
+    exam = int(cur.lastrowid)
+    capacity.generate_study_sessions(conn, ZoneInfo(config.TZ))
+
+    client.post(f"/assignments/{exam}/study-sessions/drop")
+    capacity.generate_study_sessions(conn, ZoneInfo(config.TZ))
+
+    body = client.get("/").text
+    assert "Study for Midterm" not in body
+
+
+def test_ordinary_work_is_not_labelled_as_generated(client, conn):
+    add(conn, "Something I typed", 2.0, 3)
+    assert "Made automatically" not in client.get("/").text

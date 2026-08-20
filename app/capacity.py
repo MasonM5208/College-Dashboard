@@ -698,3 +698,175 @@ def ranker(conn: sqlite3.Connection):
         return round(total, 2)
 
     return available
+
+
+# --- study sessions generated from exams ------------------------------------
+#
+# SPEC §9: "An exam 10 days out generates study sessions with estimated hours,
+# which then compete for capacity like any other work."
+#
+# The sessions are ordinary rows in `assignments`, which is the point: they have
+# to be ranked, timed, counted against capacity and visible to the chat, and a
+# separate table would mean teaching all four about a second kind of work.
+
+# How far out an exam has to be before sessions are worth generating. Closer than
+# this and there is no ladder left to build — the exam itself is the next thing to
+# do, and inventing three study sessions inside four days is busywork that
+# competes with the revision it is supposed to represent.
+EXAM_MILESTONE_MIN_DAYS = 7
+
+# Days before the exam. SPEC gives ten days as the example horizon; these sit
+# inside it, spaced so the first is far enough out to be useful and the last is
+# close enough to be revision rather than learning.
+EXAM_SESSION_OFFSETS = (8, 5, 3, 1)
+
+# What each session is worth if the exam carries no estimate of its own. Not used
+# by default — generation requires an estimate, for the reason in generate_study_
+# sessions — but a sensible floor if that ever changes.
+DEFAULT_SESSION_HOURS = 1.5
+
+
+def _session_due(exam_due: datetime, offset_days: int, zone: ZoneInfo) -> str:
+    """When a session that many days before the exam falls due, stored as UTC.
+
+    Nine in the evening local: late enough to be a whole day's opportunity, early
+    enough that "due today" still means today.
+    """
+    local = (exam_due - timedelta(days=offset_days)).astimezone(zone)
+    local = local.replace(hour=21, minute=0, second=0, microsecond=0)
+    return local.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def _sessions_for(conn: sqlite3.Connection, exam_id: int) -> list[sqlite3.Row]:
+    return conn.execute(
+        "SELECT * FROM assignments WHERE parent_assignment_id = ? ORDER BY due_at",
+        (exam_id,),
+    ).fetchall()
+
+
+def generate_study_sessions(
+    conn: sqlite3.Connection,
+    zone: ZoneInfo,
+    now: datetime | None = None,
+) -> int:
+    """Create study sessions for exams that are far enough out to need them.
+
+    Three rules keep this from being a nuisance, which is the failure mode of
+    every feature that creates work on its own:
+
+    1. **An exam with no estimate generates nothing.** SPEC says the sessions
+       carry estimated hours, and inventing an estimate for revision would be
+       exactly the guessing the rest of the dashboard refuses to do. It also means
+       generation is something Mason opts into by estimating the exam.
+    2. **An exam whose sessions were deleted stays deleted.** Regenerating them
+       would make "no" a thing he has to say every fifteen minutes.
+    3. **Sessions already started or finished are never touched**, even when the
+       exam moves. Work that was done is a fact.
+    """
+    now = now or datetime.now(timezone.utc)
+    created = 0
+
+    exams = conn.execute(
+        """
+        SELECT id, title, course_id, due_at, est_hours, points_possible
+          FROM assignments
+         WHERE type = 'exam'
+           AND status NOT IN ('submitted','graded','dismissed')
+           AND due_at IS NOT NULL
+           AND est_hours IS NOT NULL AND est_hours > 0
+           AND parent_assignment_id IS NULL
+        """
+    ).fetchall()
+
+    for exam in exams:
+        due = priority._parse(exam["due_at"])
+        if due is None:
+            continue
+
+        days_out = (due - now).total_seconds() / 86400.0
+        if days_out < EXAM_MILESTONE_MIN_DAYS:
+            continue
+
+        # Only the offsets that are still in the future. An exam eight days out
+        # gets three sessions, not four with one already overdue.
+        offsets = [
+            offset for offset in EXAM_SESSION_OFFSETS
+            if (due - timedelta(days=offset)) > now
+        ]
+        if not offsets:
+            continue
+
+        wanted = [_session_due(due, offset, zone) for offset in sorted(offsets, reverse=True)]
+
+        existing = _sessions_for(conn, exam["id"])
+        if existing:
+            # Compare against what the current due date *should* produce, rather
+            # than against some property of the old dates. The first attempt asked
+            # whether the sessions still fell before the exam, which stays true
+            # when an exam is postponed — so a moved exam kept its old ladder and
+            # the sessions bunched up weeks early.
+            if [row["due_at"] for row in existing] == wanted:
+                continue
+            # Something has been worked on, so the ladder is no longer only ours
+            # to rearrange. Work that was done is a fact.
+            if any(row["status"] != "not_started" for row in existing):
+                continue
+            conn.execute(
+                "DELETE FROM assignments WHERE parent_assignment_id = ? "
+                "AND status = 'not_started'",
+                (exam["id"],),
+            )
+
+        # SPEC §9 wants the sessions to carry the hours. The exam's own estimate is
+        # the total revision time, split evenly — a split he can then correct per
+        # session, which is more useful than one number he cannot act on.
+        per_session = round(float(exam["est_hours"]) / len(offsets), 2)
+        if per_session <= 0:
+            per_session = DEFAULT_SESSION_HOURS
+
+        for index, session_due in enumerate(wanted, start=1):
+            conn.execute(
+                """
+                INSERT INTO assignments
+                  (course_id, title, type, due_at, est_hours, est_hours_remaining,
+                   status, source, parent_assignment_id)
+                VALUES (?,?,'milestone',?,?,?,'not_started','manual',?)
+                """,
+                (
+                    exam["course_id"],
+                    f"Study for {exam['title']} ({index} of {len(wanted)})",
+                    session_due,
+                    per_session,
+                    per_session,
+                    exam["id"],
+                ),
+            )
+            created += 1
+
+        conn.execute(
+            "INSERT INTO audit_log (action, table_name, record_id, detail_json) "
+            "VALUES ('study_sessions', 'assignments', ?, ?)",
+            (exam["id"], f'{{"sessions": {len(offsets)}}}'),
+        )
+
+    if created:
+        log.info("Generated %d study session(s) from exams.", created)
+    return created
+
+
+def drop_study_sessions(conn: sqlite3.Connection, exam_id: int) -> int:
+    """Remove an exam's unstarted sessions, and do not offer them again.
+
+    "Not for this exam" has to be a decision that sticks. The exam is marked by
+    pointing it at itself, which `generate_study_sessions` reads as "already
+    handled" — a sentinel rather than a new column, because a boolean that only
+    ever means "leave this alone" is not worth a migration.
+    """
+    removed = conn.execute(
+        "DELETE FROM assignments WHERE parent_assignment_id = ? AND status = 'not_started'",
+        (exam_id,),
+    ).rowcount
+    conn.execute(
+        "UPDATE assignments SET parent_assignment_id = id WHERE id = ?", (exam_id,)
+    )
+    return removed

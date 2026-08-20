@@ -18,7 +18,7 @@ from __future__ import annotations
 import asyncio
 import logging
 
-from app import caldav_push, canvas, config, db, mailbox
+from app import caldav_push, canvas, capacity, config, db, mailbox
 
 log = logging.getLogger("scheduler")
 
@@ -64,6 +64,31 @@ def push_reminders_once() -> caldav_push.SyncResult:
         return caldav_push.sync(conn)
     finally:
         conn.close()
+
+
+# SPEC §9's exam auto-milestones. Hourly rather than every fifteen minutes: an
+# exam entered now does not need its study ladder within the quarter-hour, and a
+# job that creates work should run at the slowest rate that is still useful.
+STUDY_SESSION_INTERVAL_SECONDS = 60 * 60
+
+
+def generate_study_sessions_once() -> int:
+    conn = db.connect()
+    try:
+        from zoneinfo import ZoneInfo
+        return capacity.generate_study_sessions(conn, ZoneInfo(config.TZ))
+    finally:
+        conn.close()
+
+
+async def _study_session_loop() -> None:
+    await asyncio.sleep(STARTUP_DELAY_SECONDS * 4)
+    while True:
+        try:
+            await asyncio.to_thread(generate_study_sessions_once)
+        except Exception:
+            log.exception("Generating study sessions raised an unexpected error")
+        await asyncio.sleep(STUDY_SESSION_INTERVAL_SECONDS)
 
 
 async def _reminder_loop() -> None:
@@ -139,6 +164,10 @@ def start(app) -> list[asyncio.Task]:
             "MAIL_IMAP_HOST, MAIL_USERNAME and MAIL_PASSWORD are not all set, so no "
             "mail will be collected. See docs/SETUP.md section 18."
         )
+
+    # No configuration to check: this reads and writes the local database only,
+    # and generates nothing until an exam has an estimate.
+    tasks.append(asyncio.create_task(_study_session_loop(), name="study-sessions"))
 
     return tasks
 

@@ -252,6 +252,14 @@ def today(request: Request):
         sacrifices = capacity.recommended_sacrifices(load)
         timer = capacity.running(conn)
         timer_started = local_time(timer["started_at"], zone) if timer else None
+        generated = {
+            row["id"]: row["parent_assignment_id"]
+            for row in conn.execute(
+                "SELECT id, parent_assignment_id FROM assignments "
+                "WHERE parent_assignment_id IS NOT NULL "
+                "AND parent_assignment_id <> id"
+            )
+        }
     finally:
         conn.close()
 
@@ -275,6 +283,10 @@ def today(request: Request):
             "due_text": priority.describe_due(item, now),
             "slack_text": priority.describe_slack(item),
             "due_exact": local_time(item.due_at, zone),
+            # Generated work says so. A study session that appeared on its own and
+            # does not admit it is indistinguishable from one Mason forgot adding,
+            # and the second is a much worse thing to believe about your own list.
+            "generated_for": generated.get(item.id),
         }
 
     return templates.TemplateResponse(
@@ -890,6 +902,21 @@ def timer_stop(request: Request, note: str = Form("")):
     conn = db.connect()
     try:
         capacity.stop_timer(conn, note=note)
+    finally:
+        conn.close()
+    return _back(request)
+
+
+@app.post("/assignments/{assignment_id}/study-sessions/drop")
+def drop_study_sessions(assignment_id: int, request: Request):
+    """Say no to an exam's generated study sessions, permanently.
+
+    A feature that creates work has to be refusable in one tap, or it becomes a
+    thing to be tolerated rather than used.
+    """
+    conn = db.connect()
+    try:
+        capacity.drop_study_sessions(conn, assignment_id)
     finally:
         conn.close()
     return _back(request)

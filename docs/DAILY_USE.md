@@ -398,6 +398,29 @@ number on the screen untrustworthy, including the ones that are right.
 
 ---
 
+## Study sessions that appear on their own
+
+Give an exam a time estimate and, if it is more than a week away, the dashboard
+breaks that estimate into four study sessions — eight, five, three and one day
+before — and puts them in the list like any other work. They are ranked, they can
+be timed, and they count against your capacity, which is the point: eight hours of
+revision that only exists in your head competes with nothing.
+
+Each one says **Made automatically from an exam** so you can never mistake it for
+something you entered and forgot.
+
+**Nothing is generated until you estimate the exam.** That is the on switch. The
+dashboard will not invent a number for how long revision takes.
+
+**To stop them for one exam**, tap *Stop making these for that exam* on any of its
+sessions. That decision sticks — they will not come back. Sessions you have
+already started or finished are never removed, by that button or by anything else.
+
+If you move the exam and have not started any of them, the ladder rebuilds around
+the new date.
+
+---
+
 ## Sunday, five minutes
 
 **Review** asks three questions in the order that is easiest to avoid:

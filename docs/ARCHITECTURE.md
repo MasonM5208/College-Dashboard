@@ -796,6 +796,36 @@ Two decisions that shape whether it is trustworthy:
   ranking them. Recommending something be dropped without knowing what it costs is
   precisely the confident-but-wrong advice that would end the feature.
 
+### Exam study sessions are ordinary assignment rows
+
+SPEC §9: *"An exam 10 days out generates study sessions with estimated hours,
+which then compete for capacity like any other work."* That last clause decides
+the design. The sessions are rows in `assignments` with a
+`parent_assignment_id`, not a separate table, because they have to be ranked,
+timed, counted against capacity and visible to the chat — and a second table
+would mean teaching all four about a second kind of work.
+
+Three guard rails, because a feature that creates work is a nuisance by default:
+
+- **No estimate on the exam, no sessions.** SPEC says the sessions carry estimated
+  hours, and inventing one for revision is the guessing the rest of the dashboard
+  refuses to do. It also makes generation something Mason opts into.
+- **Refusal sticks.** `drop_study_sessions` points the exam's
+  `parent_assignment_id` at itself as a sentinel, which generation reads as
+  "already handled". A boolean that only ever means "leave this alone" is not
+  worth a column.
+- **Started work is never touched**, including when the exam moves.
+
+The rebuild check compares existing session dates against what the *current* due
+date should produce. The first attempt asked whether the sessions still fell
+before the exam — which stays true when an exam is postponed, so a moved exam kept
+its old ladder and the sessions bunched up weeks early. A test moves an exam and
+asserts the new dates.
+
+Generation runs hourly rather than every fifteen minutes: an exam entered now does
+not need its ladder within the quarter-hour, and a job that creates work should
+run at the slowest rate that is still useful.
+
 ### `get_workload`, a fifth chat tool
 
 SPEC §10 names four. The capacity model answers a question none of them can —

@@ -604,3 +604,22 @@ mark {
   color: var(--text);
   border-bottom: 2px solid var(--accent);
 }
+
+/* Work the dashboard created rather than work Mason entered. It says so: a study
+   session that appeared on its own and does not admit it is indistinguishable
+   from one he forgot adding, and that is a much worse thing to believe about
+   your own list. */
+.generated-note { font-size: 0.8rem; margin-top: 0.25rem; }
+
+.inline-form { display: inline; }
+
+.linkish {
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  font-size: inherit;
+  color: var(--accent);
+  text-decoration: underline;
+  cursor: pointer;
+}

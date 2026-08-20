@@ -30,6 +30,14 @@
 {# Every ranked row carries the numbers that placed it — SPEC §9 forbids a bare
    score and requires the inputs to travel with the item. #}
 {% macro reasons(entry) %}
+  {% if entry.generated_for %}
+    <div class="muted generated-note">
+      Made automatically from an exam.
+      <form method="post" action="/assignments/{{ entry.generated_for }}/study-sessions/drop" class="inline-form">
+        <button type="submit" class="linkish">Stop making these for that exam</button>
+      </form>
+    </div>
+  {% endif %}
   <div class="muted why">
     {{ entry.due_text }}
     {%- if entry.item.hours_left is not none %}
