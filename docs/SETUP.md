@@ -623,12 +623,16 @@ laptop.
    Expected — one address beginning with `100`:
 
    ```
-   100.92.147.61
+   100.x.y.z
    ```
 
    **Write this down.** It is the address you will use for everything from here
    on. It is not secret in the way a password is, but there is no reason to post
-   it anywhere either.
+   it anywhere either, which is why it is not written down in this repository.
+
+   > **Every `100.x.y.z` later in these documents means the address you just
+   > wrote down.** Yours will be different, and it never appears here — type your
+   > own in its place each time.
 
    If you have destroyed and rebuilt a server at any point, its old entry stays
    registered and the new one is given a name with a number added, such as
@@ -667,18 +671,18 @@ From your Mac's Terminal — open a second Terminal window, or type `exit` first
 run this, replacing the address with yours:
 
 ```
-ping -c 3 100.92.147.61
+ping -c 3 100.x.y.z
 ```
 
 Expected:
 
 ```
-PING 100.92.147.61 (100.92.147.61): 56 data bytes
-64 bytes from 100.92.147.61: icmp_seq=0 ttl=64 time=24.113 ms
-64 bytes from 100.92.147.61: icmp_seq=1 ttl=64 time=23.887 ms
-64 bytes from 100.92.147.61: icmp_seq=2 ttl=64 time=24.402 ms
+PING 100.x.y.z (100.x.y.z): 56 data bytes
+64 bytes from 100.x.y.z: icmp_seq=0 ttl=64 time=24.113 ms
+64 bytes from 100.x.y.z: icmp_seq=1 ttl=64 time=23.887 ms
+64 bytes from 100.x.y.z: icmp_seq=2 ttl=64 time=24.402 ms
 
---- 100.92.147.61 ping statistics ---
+--- 100.x.y.z ping statistics ---
 3 packets transmitted, 3 packets received, 0.0% packet loss
 ```
 
@@ -687,7 +691,7 @@ PING 100.92.147.61 (100.92.147.61): 56 data bytes
 From now on you can connect with the private address instead of the public one:
 
 ```
-ssh mason@100.92.147.61
+ssh mason@100.x.y.z
 ```
 
 ---
@@ -720,7 +724,7 @@ once to be sure it works.
    the other one:
 
    ```
-   ssh mason@100.92.147.61
+   ssh mason@100.x.y.z
    ```
 
 2. Get the address from the server itself, rather than from your notes. It must be
@@ -735,7 +739,7 @@ once to be sure it works.
 
    ```
    4: tailscale0: <POINTOPOINT,MULTICAST,NOARP,UP,LOWER_UP> mtu 1280 qdisc fq_codel state UNKNOWN group default qlen 500
-       inet 100.92.147.61/32 scope global tailscale0
+       inet 100.x.y.z/32 scope global tailscale0
           valid_lft forever preferred_lft forever
    ```
 
@@ -748,13 +752,13 @@ once to be sure it works.
    configuration file, using the address you saw above:
 
    ```
-   echo "ListenAddress 100.92.147.61" | sudo tee /etc/ssh/sshd_config.d/tailscale-only.conf
+   echo "ListenAddress 100.x.y.z" | sudo tee /etc/ssh/sshd_config.d/tailscale-only.conf
    ```
 
    Expected — it echoes the line back:
 
    ```
-   ListenAddress 100.92.147.61
+   ListenAddress 100.x.y.z
    ```
 
 4. Check the configuration is valid before applying it:
@@ -818,7 +822,7 @@ once to be sure it works.
 connect over the private address:
 
 ```
-ssh mason@100.92.147.61
+ssh mason@100.x.y.z
 ```
 
 You should get a password prompt. That proves the private route still works.
@@ -1044,7 +1048,7 @@ not the server — read each step's heading carefully.
    server again:
 
    ```
-   ssh mason@100.92.147.61
+   ssh mason@100.x.y.z
    ```
 
    **Check you are in the right place before typing anything secret:**
@@ -1197,7 +1201,7 @@ Expected:
    ```
 
    Change the line reading `TAILNET_BIND_IP=100.x.y.z` to your real address, for
-   example `TAILNET_BIND_IP=100.92.147.61`. Save and exit as before: `Control`
+   example `TAILNET_BIND_IP=100.x.y.z`. Save and exit as before: `Control`
    and `O`, `Return`, `Control` and `X`.
 
    This address is what keeps the dashboard private. It tells the server to offer
@@ -1271,7 +1275,7 @@ Expected:
    Expected — your private `100.` address before the `:8000`:
 
    ```
-   LISTEN 0  4096  100.92.147.61:8000  0.0.0.0:*  users:(("docker-proxy",pid=4412,fd=7))
+   LISTEN 0  4096  100.x.y.z:8000  0.0.0.0:*  users:(("docker-proxy",pid=4412,fd=7))
    ```
 
    If you see `0.0.0.0:8000` or `*:8000` instead, the dashboard **is** exposed to
@@ -1338,7 +1342,7 @@ the dashboard from both of your devices.
    address and `:8000` on the end:
 
    ```
-   http://100.92.147.61:8000
+   http://100.x.y.z:8000
    ```
 
    You should see a page headed **Semester Dashboard**, with a green banner
@@ -1371,7 +1375,7 @@ the dashboard from both of your devices.
   **First, type the address in full, with `http://` on the front:**
 
   ```
-  http://100.92.147.61:8000
+  http://100.x.y.z:8000
   ```
 
   Without the prefix, Safari often treats what you typed as something to search
@@ -1639,7 +1643,7 @@ you typing it comes through here.
 4. **On the server**, open the secrets file:
 
    ```
-   ssh mason@100.92.147.61
+   ssh mason@100.x.y.z
    ```
 
    ```
@@ -1760,7 +1764,7 @@ of this section explains how to halve it if it climbs.
 4. **On the server**, open the secrets file:
 
    ```
-   ssh mason@100.85.173.35
+   ssh mason@100.x.y.z
    ```
 
    ```
@@ -1878,7 +1882,7 @@ fires whether or not the server is running.
 3. **On the server**, open the secrets file:
 
    ```
-   ssh mason@100.85.173.35
+   ssh mason@100.x.y.z
    ```
 
    ```

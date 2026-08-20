@@ -6,7 +6,7 @@ Everything here assumes you are connected to the server. From your Mac's Termina
 replacing the address with yours:
 
 ```
-ssh mason@100.92.147.61
+ssh mason@100.x.y.z
 ```
 
 Then move into the code folder, which is where every `docker compose` command has
@@ -37,7 +37,7 @@ three weeks ago while the dashboard kept showing what it knew in September.
 
    ```
    NAME        IMAGE                      STATUS                    PORTS
-   dashboard   college-dashboard:local    Up 12 days (healthy)      100.92.147.61:8000->8000/tcp
+   dashboard   college-dashboard:local    Up 12 days (healthy)      100.x.y.z:8000->8000/tcp
    ```
 
    `(healthy)` is what you want. `(unhealthy)` or a `STATUS` that keeps resetting
@@ -86,7 +86,7 @@ Then try the dashboard again. If it loads, that was the problem.
 From your Mac's Terminal:
 
 ```
-ping -c 3 100.92.147.61
+ping -c 3 100.x.y.z
 ```
 
 - **`0.0% packet loss`** — the server is up and reachable. Go to step 3.
@@ -140,7 +140,7 @@ sudo ss -ltnp | grep 8000
 Expected — your `100.` address:
 
 ```
-LISTEN 0  4096  100.92.147.61:8000  0.0.0.0:*  users:(("docker-proxy",pid=4412,fd=7))
+LISTEN 0  4096  100.x.y.z:8000  0.0.0.0:*  users:(("docker-proxy",pid=4412,fd=7))
 ```
 
 If the address shown is not the one you are typing into your browser, use the one
