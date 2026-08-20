@@ -29,6 +29,29 @@
     <header class="page-head">
       <h1>{% block heading %}Semester Dashboard{% endblock %}</h1>
       {% block subheading %}{% endblock %}
+
+      {#- Every screen gets the same seven links in the same order. Nine pages
+          had grown nine different subsets of them, which meant the way back to
+          Today depended on where you happened to be. `path` marks the current
+          one rather than linking it to itself. -#}
+      {% set path = request.url.path if request else '/' %}
+      <nav class="nav" aria-label="Main">
+        {% for href, label in [
+             ('/', 'Today'),
+             ('/chat', 'Ask'),
+             ('/archive', 'Archive'),
+             ('/capacity', 'Your week'),
+             ('/review', 'Review'),
+             ('/assignments', 'Everything'),
+             ('/status', 'Status'),
+           ] %}
+          {% if path == href %}
+            <span class="nav-here" aria-current="page">{{ label }}</span>
+          {% else %}
+            <a href="{{ href }}">{{ label }}</a>
+          {% endif %}
+        {% endfor %}
+      </nav>
     </header>
 
     {% block content %}{% endblock %}

@@ -438,3 +438,29 @@ def test_the_status_page_does_not_claim_reminders_are_on_the_phone(
     assert "on your phone" not in body
     assert "accepted by iCloud" in body
     assert "not reaching your phone" in body
+
+
+# --- one navigation, everywhere ---------------------------------------------
+
+
+NAV_LABELS = ("Today", "Ask", "Archive", "Your week", "Review", "Everything", "Status")
+
+
+@pytest.mark.parametrize(
+    "path",
+    ["/", "/status", "/assignments", "/add", "/batch", "/courses", "/chat",
+     "/chat/threads", "/archive", "/archive/add", "/archive/review",
+     "/capacity", "/review"],
+)
+def test_every_screen_offers_the_same_way_out(client, path):
+    """Nine pages had grown nine different subsets of the links, so the way back
+    to Today depended on where you happened to be standing."""
+    body = client.get(path).text
+    for label in NAV_LABELS:
+        assert label in body, f"{path} is missing {label!r}"
+
+
+def test_the_current_screen_is_marked_rather_than_linked_to_itself(client):
+    body = client.get("/capacity").text
+    assert 'aria-current="page">Your week<' in body
+    assert 'href="/capacity"' not in body

@@ -586,3 +586,21 @@ mark {
   background: var(--surface);
   color: var(--text);
 }
+
+
+/* One navigation, on every screen, in the same order. Wraps to a second line on
+   a phone rather than scrolling sideways or hiding behind a menu button — a menu
+   is a tap before you can even see where you can go. */
+.nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.15rem 0.9rem;
+  margin-top: 0.6rem;
+  font-size: 0.9rem;
+}
+
+.nav-here {
+  font-weight: 600;
+  color: var(--text);
+  border-bottom: 2px solid var(--accent);
+}
