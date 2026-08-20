@@ -8,13 +8,23 @@
   </form>
 {% endmacro %}
 
-{% macro status_buttons(item) %}
-  <form method="post" action="/assignments/{{ item.id }}/status" class="row-actions">
-    {% if item.status != 'in_progress' %}
-      <button type="submit" name="value" value="in_progress" class="chip">Start</button>
+{% macro status_buttons(item, timer) %}
+  <div class="row-actions">
+    {# The timer is what feeds calibration (SPEC §9), so starting work and
+       starting the clock are the same tap rather than two. #}
+    {% if timer and timer.assignment_id == item.id %}
+      <form method="post" action="/timer/stop">
+        <button type="submit" class="chip chip-running">Stop the clock</button>
+      </form>
+    {% else %}
+      <form method="post" action="/assignments/{{ item.id }}/timer/start">
+        <button type="submit" class="chip">Start</button>
+      </form>
     {% endif %}
-    <button type="submit" name="value" value="submitted" class="chip chip-done">Done</button>
-  </form>
+    <form method="post" action="/assignments/{{ item.id }}/status">
+      <button type="submit" name="value" value="submitted" class="chip chip-done">Done</button>
+    </form>
+  </div>
 {% endmacro %}
 
 {# Every ranked row carries the numbers that placed it — SPEC §9 forbids a bare
@@ -39,12 +49,73 @@
     {{ now_display }} · <a href="/chat">Ask</a> ·
     <a href="/archive">Archive{% if facts.archive.waiting %} ({{ facts.archive.waiting }}){% endif %}</a> ·
     <a href="/add">Add work</a> · <a href="/batch">Paste a syllabus</a> ·
-    <a href="/courses">Courses</a> · <a href="/assignments">Everything</a> ·
+    <a href="/courses">Courses</a> · <a href="/capacity">Your week</a> ·
+    <a href="/review">Review</a> · <a href="/assignments">Everything</a> ·
     <a href="/status">Status</a>
   </p>
 {% endblock %}
 
 {% block content %}
+
+  {% if load.overloaded %}
+    {# SPEC §9: "Do not soften this. Do not hide it behind a toggle. Do not add
+       encouragement." The shortfall is stated in plain hours and the specific
+       items to drop are named, with what each would cost. #}
+    <section class="overload">
+      <h2 class="overload-head">{{ load.headline }}</h2>
+      <p class="muted">
+        Next {{ load.window_days }} days, across {{ load.items }} pieces of work.
+        You are <strong>{{ '%.0f' % load.shortfall }} hours short</strong>. Something
+        is not getting done, and choosing which now is better than finding out on
+        Thursday.
+      </p>
+
+      {% if sacrifices %}
+        <p class="muted">Cheapest to let slide, in order:</p>
+        <ul class="stack">
+          {% for item in sacrifices %}
+            <li class="card card-sacrifice">
+              <div class="card-title">{{ item.title }}</div>
+              <div class="muted">
+                {%- if item.course_name %}{{ item.course_name }} · {% endif -%}
+                frees {{ '%g' % item.hours }}h · {{ item.reason }}
+              </div>
+              <div class="row-actions">
+                <form method="post" action="/assignments/{{ item.id }}/status">
+                  <button type="submit" name="value" value="dismissed" class="chip">Let this one go</button>
+                </form>
+                <a class="chip" href="/assignments/{{ item.id }}/edit">Move its date</a>
+              </div>
+            </li>
+          {% endfor %}
+        </ul>
+        {% if not sacrifices | selectattr('grade_cost_pct') | list %}
+          <p class="muted">
+            None of these has a recorded points value or late policy, so there is
+            no honest way to say which is genuinely cheapest to drop — they are
+            ordered by the time they free and nothing else. Fill in points and
+            late policies on <a href="/courses">Courses</a> and this becomes a real
+            recommendation.
+          </p>
+        {% endif %}
+      {% else %}
+        <p class="muted">
+          Nothing due in this window has an estimate, so there is nothing to
+          weigh. Add estimates on Today and this becomes a real recommendation.
+        </p>
+      {% endif %}
+    </section>
+  {% endif %}
+
+  {% if timer %}
+    <div class="banner banner-ok timer-strip">
+      <strong>Clock running on {{ timer.title }}</strong>
+      <span class="muted">since {{ timer_started }}</span>
+      <form method="post" action="/timer/stop">
+        <button type="submit" class="chip chip-running">Stop</button>
+      </form>
+    </div>
+  {% endif %}
 
   <form method="post" action="/capture" class="capture">
     <input type="text" name="text" placeholder="Capture anything — sort it out later"
@@ -92,7 +163,7 @@
               {{ entry.item.course_code or entry.item.course_name or 'no course' }} ·
               was due {{ entry.due_exact }}
             </div>
-            {{ status_buttons(entry.item) }}
+            {{ status_buttons(entry.item, timer) }}
           </li>
         {% endfor %}
       </ul>
@@ -127,7 +198,7 @@
         <div class="row-actions">
           <a class="chip" href="/assignments/{{ first.item.id }}/edit">Edit</a>
         </div>
-        {{ status_buttons(first.item) }}
+        {{ status_buttons(first.item, timer) }}
       </div>
 
       {% if ranked | length > 1 %}
@@ -144,7 +215,7 @@
               <div class="verdict {{ 'verdict-bad' if entry.item.slack is not none and entry.item.slack < 0 }}">
                 {{ entry.slack_text }}
               </div>
-              {{ status_buttons(entry.item) }}
+              {{ status_buttons(entry.item, timer) }}
             </li>
           {% endfor %}
         </ul>
@@ -173,7 +244,7 @@
             <div class="row-actions">
               <a class="chip" href="/assignments/{{ entry.item.id }}/edit">Add details</a>
             </div>
-            {{ status_buttons(entry.item) }}
+            {{ status_buttons(entry.item, timer) }}
           </li>
         {% endfor %}
       </ul>

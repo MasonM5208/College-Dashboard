@@ -26,8 +26,8 @@ from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, Stre
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
-from app import (archive, canvas, claude_chat, config, db, entry, mailbox,
-                 migrate, priority, reminders, scheduler, status)
+from app import (archive, canvas, capacity, claude_chat, config, db, entry,
+                 mailbox, migrate, priority, reminders, scheduler, status)
 
 log = logging.getLogger("dashboard")
 
@@ -234,6 +234,9 @@ def today(request: Request):
     Ordered by slack, not by deadline, and every item carries the numbers that put
     it where it is (SPEC §9 display rules).
     """
+    zone = request.app.state.zone
+    now = datetime.now(timezone.utc)
+
     conn = db.connect()
     try:
         rows = _assignment_rows(conn)
@@ -241,12 +244,16 @@ def today(request: Request):
         courses_to_name = conn.execute(
             "SELECT id, name, code FROM courses WHERE needs_naming = 1 ORDER BY name"
         ).fetchall()
+        # M6: the real capacity model replaces M2's flat constant. Read once and
+        # closed over, so ranking twelve items is not twenty-four queries.
+        available_fn = capacity.ranker(conn)
+        items = priority.rank(rows, zone, now, available_fn=available_fn)
+        load = capacity.overload(conn, zone, now=now)
+        sacrifices = capacity.recommended_sacrifices(load)
+        timer = capacity.running(conn)
+        timer_started = local_time(timer["started_at"], zone) if timer else None
     finally:
         conn.close()
-
-    zone = request.app.state.zone
-    now = datetime.now(timezone.utc)
-    items = priority.rank(rows, zone, now)
 
     all_needing_estimate = [i for i in items if i.needs_estimate and i.due_at]
     needs_estimate = all_needing_estimate[:ESTIMATE_PROMPT_LIMIT]
@@ -285,6 +292,10 @@ def today(request: Request):
             "estimates": ESTIMATE_CHOICES,
             "now_display": local_time(now.strftime(status.TIMESTAMP_FMT), zone),
             "horizon_days": HORIZON_DAYS,
+            "load": load,
+            "sacrifices": sacrifices,
+            "timer": timer,
+            "timer_started": timer_started,
         },
     )
 
@@ -859,6 +870,296 @@ def edit_course(
 
 
 
+# --- capacity, the timer and the weekly review (M6) --------------------------
+
+
+@app.post("/assignments/{assignment_id}/timer/start")
+def timer_start(assignment_id: int, request: Request):
+    conn = db.connect()
+    try:
+        capacity.start_timer(conn, assignment_id)
+    except capacity.TimerError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from None
+    finally:
+        conn.close()
+    return _back(request)
+
+
+@app.post("/timer/stop")
+def timer_stop(request: Request, note: str = Form("")):
+    conn = db.connect()
+    try:
+        capacity.stop_timer(conn, note=note)
+    finally:
+        conn.close()
+    return _back(request)
+
+
+@app.get("/capacity")
+def capacity_page(request: Request, error: str | None = None):
+    """The week Mason actually has, and what it leaves for coursework.
+
+    SPEC §9's display rules apply here as much as to the ranking: every number is
+    shown with the ones that produced it, so a day reading "2 hours" can be traced
+    to the rehearsal that took the rest.
+    """
+    zone = request.app.state.zone
+    conn = db.connect()
+    try:
+        rows = capacity.settings(conn)
+        commitment_rows = capacity.commitments(conn, active_only=False)
+        week = capacity.week_ahead(conn, zone)
+        calibration = capacity.calibration(conn)
+        courses = _courses(conn)
+    finally:
+        conn.close()
+
+    return templates.TemplateResponse(
+        request=request,
+        name="capacity.html",
+        context={
+            "days": [
+                {
+                    "weekday": weekday,
+                    "name": capacity.WEEKDAY_NAMES[weekday],
+                    "productive_hours": rows[weekday]["productive_hours"],
+                    "practice_hours_target": rows[weekday]["practice_hours_target"],
+                }
+                for weekday in sorted(rows)
+            ],
+            "commitments": [
+                {
+                    "id": row["id"],
+                    "label": row["label"],
+                    "kind": row["kind"],
+                    "weekday": row["weekday"],
+                    "weekday_name": capacity.WEEKDAY_NAMES[row["weekday"]],
+                    "start_time": row["start_time"],
+                    "end_time": row["end_time"],
+                    "course_name": row["course_name"],
+                    "active": bool(row["active"]),
+                }
+                for row in commitment_rows
+            ],
+            "week": week,
+            "weekdays": list(enumerate(capacity.WEEKDAY_NAMES)),
+            "kinds": capacity.COMMITMENT_KINDS,
+            "courses": courses,
+            "calibration": [
+                {
+                    "type": key,
+                    "sentence": capacity.describe_calibration(row),
+                    "trusted": row["sample_count"] >= capacity.CALIBRATION_MIN_SAMPLES,
+                    "multiplier": row["multiplier"],
+                }
+                for key, row in sorted(calibration.items())
+            ],
+            "min_samples": capacity.CALIBRATION_MIN_SAMPLES,
+            "error": error,
+        },
+    )
+
+
+@app.post("/capacity")
+async def save_capacity(request: Request):
+    """Save all seven days at once. One form, one save, no per-day buttons.
+
+    Async only because reading fourteen form fields by name would be fourteen
+    Form(...) parameters, and `await request.form()` is the honest way to say
+    "whatever the form had". Every other route here is synchronous because its
+    work is SQLite, which blocks regardless.
+    """
+    from urllib.parse import quote
+
+    form = await request.form()
+    conn = db.connect()
+    try:
+        for weekday in range(7):
+            productive = str(form.get(f"productive_{weekday}", ""))
+            practice = str(form.get(f"practice_{weekday}", ""))
+            try:
+                hours = max(float(productive), 0.0) if productive.strip() else 0.0
+                target = max(float(practice), 0.0) if practice.strip() else 0.0
+            except ValueError:
+                return RedirectResponse(
+                    f"/capacity?error={quote('Hours must be numbers, like 4 or 3.5.')}",
+                    status_code=303,
+                )
+            if hours > 16 or target > 16:
+                return RedirectResponse(
+                    f"/capacity?error={quote('16 hours is the most a day can hold here.')}",
+                    status_code=303,
+                )
+            conn.execute(
+                "UPDATE capacity_settings SET productive_hours = ?, "
+                "practice_hours_target = ? WHERE weekday = ?",
+                (hours, target, weekday),
+            )
+    finally:
+        conn.close()
+    return RedirectResponse("/capacity", status_code=303)
+
+
+@app.post("/commitments")
+def add_commitment(
+    request: Request,
+    label: str = Form(...),
+    kind: str = Form("other"),
+    weekday: str = Form(...),
+    start_time: str = Form(...),
+    end_time: str = Form(...),
+    course_id: str = Form(""),
+):
+    from urllib.parse import quote
+
+    def fail(message: str):
+        return RedirectResponse(f"/capacity?error={quote(message)}", status_code=303)
+
+    if not label.strip():
+        return fail("Give the commitment a name.")
+    if kind not in capacity.COMMITMENT_KINDS:
+        kind = "other"
+    if not weekday.isdigit() or not 0 <= int(weekday) <= 6:
+        return fail("Pick a day of the week.")
+
+    try:
+        if capacity._minutes(end_time) <= capacity._minutes(start_time):
+            return fail("The finish time has to be after the start time.")
+    except (ValueError, IndexError):
+        return fail("Times need to look like 14:30.")
+
+    conn = db.connect()
+    try:
+        term = conn.execute(
+            "SELECT id FROM terms ORDER BY start_date DESC LIMIT 1"
+        ).fetchone()
+        if term is None:
+            return fail("Add a term first, on the Courses page.")
+        conn.execute(
+            "INSERT INTO commitments (term_id,label,kind,weekday,start_time,end_time,"
+            "course_id) VALUES (?,?,?,?,?,?,?)",
+            (term["id"], label.strip()[:120], kind, int(weekday),
+             start_time.strip(), end_time.strip(),
+             int(course_id) if course_id.strip().isdigit() else None),
+        )
+    finally:
+        conn.close()
+    return RedirectResponse("/capacity", status_code=303)
+
+
+@app.post("/commitments/{commitment_id}/toggle")
+def toggle_commitment(commitment_id: int, request: Request):
+    """Switch a commitment off without losing it.
+
+    A rehearsal that stops after the concert is not a mistake to delete — it may
+    well come back next term, and re-typing it is exactly the friction that stops
+    the capacity model being kept accurate.
+    """
+    conn = db.connect()
+    try:
+        conn.execute(
+            "UPDATE commitments SET active = 1 - active WHERE id = ?", (commitment_id,)
+        )
+    finally:
+        conn.close()
+    return _back(request)
+
+
+@app.post("/commitments/{commitment_id}/delete")
+def delete_commitment(commitment_id: int, request: Request):
+    conn = db.connect()
+    try:
+        conn.execute("DELETE FROM commitments WHERE id = ?", (commitment_id,))
+    finally:
+        conn.close()
+    return RedirectResponse("/capacity", status_code=303)
+
+
+@app.get("/review")
+def weekly_review(request: Request):
+    """SPEC §9's Sunday review: what is coming, what slipped, what to re-estimate.
+
+    "Five minutes. This is where calibration data actually gets used." So the
+    screen is built around the three questions rather than around the data: it
+    puts what slipped first, because that is the part nobody volunteers to look at.
+    """
+    zone = request.app.state.zone
+    now = datetime.now(timezone.utc)
+
+    conn = db.connect()
+    try:
+        rows = _assignment_rows(conn)
+        items = priority.rank(rows, zone, now, available_fn=capacity.ranker(conn))
+        week = capacity.week_ahead(conn, zone, now=now)
+        load = capacity.overload(conn, zone, now=now)
+        sacrifices = capacity.recommended_sacrifices(load)
+        calibration = capacity.calibration(conn)
+        finished = conn.execute(
+            """
+            SELECT a.id, a.title, a.type, a.updated_at, c.name AS course_name,
+                   (SELECT SUM(t.minutes)/60.0 FROM time_entries t
+                     WHERE t.assignment_id = a.id AND t.ended_at IS NOT NULL) AS logged,
+                   a.est_hours
+              FROM assignments a LEFT JOIN courses c ON c.id = a.course_id
+             WHERE a.status IN ('submitted','graded')
+               AND a.updated_at >= ?
+             ORDER BY a.updated_at DESC
+            """,
+            ((now - timedelta(days=7)).strftime(status.TIMESTAMP_FMT),),
+        ).fetchall()
+    finally:
+        conn.close()
+
+    horizon = now + timedelta(days=7)
+    coming = [
+        i for i in items
+        if i.rankable and not i.overdue and i.due_local and i.due_local <= horizon
+    ]
+    slipped = [i for i in items if i.overdue]
+    unestimated = [i for i in items if i.needs_estimate and i.due_at]
+
+    def present(item):
+        return {
+            "item": item,
+            "due_text": priority.describe_due(item, now),
+            "slack_text": priority.describe_slack(item),
+        }
+
+    return templates.TemplateResponse(
+        request=request,
+        name="review.html",
+        context={
+            "slipped": [present(i) for i in slipped],
+            "coming": [present(i) for i in coming],
+            "unestimated": [present(i) for i in unestimated],
+            "finished": [
+                {
+                    "title": row["title"],
+                    "course_name": row["course_name"],
+                    "type": row["type"],
+                    "logged": round(row["logged"], 1) if row["logged"] else None,
+                    "estimated": row["est_hours"],
+                }
+                for row in finished
+            ],
+            "week": week,
+            "week_total": round(sum(day.available_hours for day in week), 1),
+            "load": load,
+            "sacrifices": sacrifices,
+            "calibration": [
+                {
+                    "type": key,
+                    "sentence": capacity.describe_calibration(row),
+                    "trusted": row["sample_count"] >= capacity.CALIBRATION_MIN_SAMPLES,
+                }
+                for key, row in sorted(calibration.items())
+            ],
+            "estimates": ESTIMATE_CHOICES,
+            "now_display": local_time(now.strftime(status.TIMESTAMP_FMT), zone),
+        },
+    )
+
+
 # --- the archive ------------------------------------------------------------
 #
 # SPEC §7: every path in — the iOS share sheet, the paste form, any future mail
@@ -1063,7 +1364,10 @@ def review_queue(request: Request):
     zone = request.app.state.zone
     return templates.TemplateResponse(
         request=request,
-        name="review.html",
+        # archive_review.html, not review.html: /review is the Sunday weekly
+        # review, and two screens called "review" sharing one template file is a
+        # collision waiting to be made twice.
+        name="archive_review.html",
         context={
             "messages": [
                 {

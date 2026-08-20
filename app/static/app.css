@@ -517,3 +517,72 @@ mark {
   font-size: 0.9rem;
   overflow-wrap: anywhere;
 }
+
+
+/* ---- capacity, the timer and overload ----------------------------------- */
+
+/* SPEC §9 calls overload mode the highest-value feature in the document after
+   reminders, and says not to soften it. So it is the loudest thing on the page:
+   full-width, warning-coloured, above everything including quick capture. */
+.overload {
+  border: 2px solid var(--bad-text);
+  border-radius: 0.6rem;
+  padding: 1rem 1.1rem;
+  margin-bottom: 1.5rem;
+}
+
+.overload-head {
+  margin: 0 0 0.4rem;
+  font-size: 1.15rem;
+  color: var(--bad-text);
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.card-sacrifice { border-left: 3px solid var(--bad-text); }
+
+/* The running clock. Sticky, because a timer you cannot see is a timer left
+   running overnight, and one bad entry drags a whole type's calibration. */
+.timer-strip {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+}
+
+.chip-running {
+  background: var(--bad-text);
+  color: var(--surface);
+  border-color: var(--bad-text);
+}
+
+.day-row { padding: 0.7rem 1rem; }
+
+.day-table { width: 100%; border-collapse: collapse; margin-bottom: 1rem; }
+
+.day-table th {
+  text-align: left;
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+  font-weight: 600;
+  padding-bottom: 0.4rem;
+}
+
+.day-table td { padding: 0.2rem 0.4rem 0.2rem 0; }
+.day-table td:first-child { width: 40%; }
+
+.day-table input {
+  width: 100%;
+  font: inherit;
+  font-size: 16px;
+  padding: 0.45rem 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: 0.45rem;
+  background: var(--surface);
+  color: var(--text);
+}

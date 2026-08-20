@@ -1,0 +1,184 @@
+{% extends "base.html" %}
+
+{% block title %}Your week — Semester Dashboard{% endblock %}
+{% block heading %}Your week{% endblock %}
+
+{% block subheading %}
+  <p class="muted">
+    What your time is already spoken for, and what that leaves.
+    <a href="/">Today</a> · <a href="/review">Weekly review</a> ·
+    <a href="/courses">Courses</a>
+  </p>
+{% endblock %}
+
+{% block content %}
+
+  {% if error %}
+    <div class="banner banner-bad">{{ error }}</div>
+  {% endif %}
+
+  <section>
+    <h2>The next seven days</h2>
+    <ul class="stack">
+      {% for day in week %}
+        <li class="card day-row">
+          <div class="card-title">{{ day.weekday_name }} {{ day.day.strftime('%-d %b') }}</div>
+          <div class="muted">
+            <strong>{{ '%.1f' % day.available_hours }}h</strong> for coursework
+            {%- if day.committed_hours %} · {{ '%.1f' % day.committed_hours }}h committed{% endif %}
+            {%- if day.practice_hours %} · {{ '%.1f' % day.practice_hours }}h practice{% endif %}
+            · {{ '%.1f' % day.productive_hours }}h budget
+          </div>
+        </li>
+      {% endfor %}
+    </ul>
+    <p class="muted">
+      Coursework hours are the smaller of your daily budget and what is actually
+      unbooked, with practice taken off the top. Everything on Today is ranked
+      against these numbers.
+    </p>
+  </section>
+
+  <section>
+    <h2>Hours per day</h2>
+    <p class="muted">
+      <strong>Budget</strong> is how many hours of coursework you can really do on
+      that day — not how many hours exist. Four is a normal figure and a good
+      starting point.
+    </p>
+    <p class="muted">
+      <strong>Practice</strong> is protected. It is subtracted before any
+      assignment is ranked, so a deadline can never quietly eat it. Practice has no
+      due date, so in any ranking that sorts by urgency it would lose every time —
+      which is exactly how a performance major finds out in October that they have
+      not practised since August.
+    </p>
+
+    <form method="post" action="/capacity" class="form">
+      <table class="day-table">
+        <thead>
+          <tr><th>Day</th><th>Budget</th><th>Practice</th></tr>
+        </thead>
+        <tbody>
+          {% for day in days %}
+            <tr>
+              <td>{{ day.name }}</td>
+              <td>
+                <input type="text" inputmode="decimal" name="productive_{{ day.weekday }}"
+                       value="{{ '%g' % day.productive_hours }}"
+                       aria-label="Coursework hours on {{ day.name }}">
+              </td>
+              <td>
+                <input type="text" inputmode="decimal" name="practice_{{ day.weekday }}"
+                       value="{{ '%g' % day.practice_hours_target }}"
+                       aria-label="Practice hours on {{ day.name }}">
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      <button type="submit">Save all seven</button>
+    </form>
+  </section>
+
+  <section>
+    <h2>Fixed commitments</h2>
+    <p class="muted">
+      Classes, rehearsals, lessons, shifts — anything at the same time every week.
+      These come out of the day before coursework is counted.
+    </p>
+
+    {% if commitments %}
+      <ul class="stack">
+        {% for item in commitments %}
+          <li class="card {{ 'card-quiet' if not item.active }}">
+            <div class="card-title">{{ item.label }}</div>
+            <div class="muted">
+              {{ item.weekday_name }} {{ item.start_time }}–{{ item.end_time }}
+              · {{ item.kind }}
+              {%- if item.course_name %} · {{ item.course_name }}{% endif %}
+              {%- if not item.active %} · switched off{% endif %}
+            </div>
+            <div class="row-actions">
+              <form method="post" action="/commitments/{{ item.id }}/toggle">
+                <button type="submit" class="chip">{{ 'Switch on' if not item.active else 'Switch off' }}</button>
+              </form>
+              <form method="post" action="/commitments/{{ item.id }}/delete">
+                <button type="submit" class="chip chip-bad">Delete</button>
+              </form>
+            </div>
+          </li>
+        {% endfor %}
+      </ul>
+    {% else %}
+      <p class="muted">Nothing entered yet, so every day counts as fully free.</p>
+    {% endif %}
+
+    <form method="post" action="/commitments" class="form">
+      <label>
+        <span>What is it?</span>
+        <input type="text" name="label" required autocomplete="off"
+               placeholder="Wind Ensemble">
+      </label>
+      <label>
+        <span>Kind</span>
+        <select name="kind">
+          {% for kind in kinds %}<option value="{{ kind }}">{{ kind }}</option>{% endfor %}
+        </select>
+      </label>
+      <label>
+        <span>Day</span>
+        <select name="weekday">
+          {% for number, name in weekdays %}<option value="{{ number }}">{{ name }}</option>{% endfor %}
+        </select>
+      </label>
+      <label>
+        <span>From</span>
+        <input type="time" name="start_time" required value="09:00">
+      </label>
+      <label>
+        <span>Until</span>
+        <input type="time" name="end_time" required value="10:00">
+      </label>
+      <label>
+        <span>Course</span>
+        <select name="course_id">
+          <option value="">Not a course</option>
+          {% for course in courses %}<option value="{{ course.id }}">{{ course.name }}</option>{% endfor %}
+        </select>
+      </label>
+      <button type="submit">Add it</button>
+    </form>
+  </section>
+
+  <section>
+    <h2>How good your estimates are</h2>
+    {% if calibration %}
+      <ul class="checks">
+        {% for row in calibration %}
+          <li>
+            <span class="pill {{ 'pill-ok' if row.trusted else 'pill-bad' }}">
+              {{ '%.1f' % row.multiplier }}×
+            </span>
+            <span class="check-name">{{ row.type }}</span>
+            <span class="muted">{{ row.sentence }}</span>
+          </li>
+        {% endfor %}
+      </ul>
+      <p class="muted">
+        Measured from work you timed and then finished. <strong>Nothing here
+        changes a number you typed</strong> — the figure is shown so you can apply
+        it yourself when estimating the next one. Most people underestimate papers
+        by about double at first.
+      </p>
+    {% else %}
+      <p class="muted">
+        Nothing measured yet. Use <strong>Start</strong> on Today when you sit down
+        to work and <strong>Stop</strong> when you get up, and after
+        {{ min_samples }} finished pieces of a kind this will tell you how far off
+        your estimates for that kind actually are.
+      </p>
+    {% endif %}
+  </section>
+
+{% endblock %}
