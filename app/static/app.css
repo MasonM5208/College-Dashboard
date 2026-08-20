@@ -447,3 +447,64 @@ a.chip {
 
 .rename-box { margin-top: 0.5rem; }
 .rename-box summary { cursor: pointer; font-size: 0.82rem; }
+
+
+/* ---- archive ------------------------------------------------------------ */
+
+.archive-actions { margin: -0.9rem 0 1.25rem; }
+
+.course-filter {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+  margin-bottom: 1.5rem;
+}
+
+.document-meta { font-size: 0.82rem; margin-top: 0.2rem; }
+
+/* One line of the message with the matched words marked. Clipped rather than
+   wrapped so a page of results stays scannable on a phone. */
+.document-snippet {
+  margin-top: 0.4rem;
+  font-size: 0.9rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+mark {
+  background: var(--ok-bg);
+  color: var(--ok-text);
+  border-radius: 0.15rem;
+  padding: 0 0.1rem;
+}
+
+/* The verbatim message. Its own line breaks are the only formatting it has, and
+   nothing here may add any: this is the copy the whole archive is trusted for.
+   A long URL must scroll inside the box rather than widen the page. */
+.document-body {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 0.6rem;
+  padding: 1rem;
+  margin: 0 0 1.25rem;
+  font: inherit;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  overflow-x: auto;
+}
+
+/* Attaching a course reuses the rename row's shape, so the select matches the
+   text inputs elsewhere rather than falling back to the browser default. */
+.rename select {
+  flex: 1;
+  min-width: 0;
+  font: inherit;
+  font-size: 16px;
+  padding: 0.5rem 0.7rem;
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  background: var(--surface);
+  color: var(--text);
+}

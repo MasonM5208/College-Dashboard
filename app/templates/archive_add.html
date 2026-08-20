@@ -1,0 +1,82 @@
+{% extends "base.html" %}
+
+{% block title %}Save a message — Semester Dashboard{% endblock %}
+{% block heading %}Save a message{% endblock %}
+
+{% block subheading %}
+  <p class="muted">
+    Paste it in and it is kept word for word. <a href="/archive">Archive</a> ·
+    <a href="/">Today</a>
+  </p>
+{% endblock %}
+
+{% block content %}
+
+  {% if error %}
+    <div class="banner banner-bad">{{ error }}</div>
+  {% endif %}
+
+  <form method="post" action="/archive/add" class="form">
+    <label>
+      <span>The message</span>
+      <textarea name="body" rows="14" required
+                placeholder="Paste the whole thing — quoted replies and signature included. They are ignored when checking for duplicates, but kept in the copy."></textarea>
+      <small class="muted">
+        Stored exactly as pasted. Nothing here is ever edited afterwards, by you or
+        by anything else.
+      </small>
+    </label>
+
+    <label>
+      <span>Subject</span>
+      <input type="text" name="subject" autocomplete="off"
+             placeholder="Left blank, the first line is used">
+    </label>
+
+    <label>
+      <span>Who sent it</span>
+      <input type="text" name="sender" autocomplete="off"
+             placeholder="Dr Ruiz, or aruiz@iu.edu">
+    </label>
+
+    <label>
+      <span>When it was sent</span>
+      <input type="text" name="received" autocomplete="off"
+             placeholder="2026-09-08, 9/8, or Sep 8 2pm">
+      <small class="muted">Leave it blank and today's date is recorded as when you saved it.</small>
+    </label>
+
+    <label>
+      <span>What it is</span>
+      <select name="kind">
+        {% for k in kinds %}
+          <option value="{{ k }}" {% if k == 'email' %}selected{% endif %}>{{ k.replace('_', ' ') }}</option>
+        {% endfor %}
+      </select>
+    </label>
+
+    <label>
+      <span>Course</span>
+      <select name="course_id">
+        <option value="">Decide later</option>
+        {% for course in courses %}
+          <option value="{{ course.id }}">{{ course.name }}</option>
+        {% endfor %}
+      </select>
+      <small class="muted">Nothing is ever guessed — this is attached only if you say so.</small>
+    </label>
+
+    <button type="submit">Save it</button>
+  </form>
+
+  <section>
+    <h2>If you save the same thing twice</h2>
+    <p class="muted">
+      It is not stored twice. Before saving, the quoted reply chain, the signature
+      and the stray whitespace are stripped off and what remains is fingerprinted,
+      so a message shared from Mail and the same message pasted from Canvas are
+      recognised as one — kept once, with a note of both ways it arrived.
+    </p>
+  </section>
+
+{% endblock %}

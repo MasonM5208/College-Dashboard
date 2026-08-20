@@ -282,18 +282,24 @@ def test_a_stale_source_is_flagged_in_the_context(conn):
     assert "incomplete" in context
 
 
-def test_the_prompt_says_there_is_no_archive_yet(conn):
-    """Without M4 there is no tool that could answer "what did she email me?".
+def test_the_prompt_demands_a_citation_for_anything_from_the_archive(conn):
+    """SPEC §10: "Enforce this in the system prompt."
 
-    Told nothing, a model will reconstruct one. SPEC §10 makes unsourced archive
-    claims a visible failure, so the prompt forbids it outright.
+    An uncited claim about a message is the failure mode that makes the whole
+    archive untrustworthy — if Mason cannot check it in one tap, a confident
+    sentence about a deadline is worse than no sentence at all.
     """
-    instructions = claude_chat.INSTRUCTIONS
-    assert "no archive" in instructions.lower()
-    assert "never" in instructions.lower()
+    instructions = claude_chat.INSTRUCTIONS.lower()
+
+    assert "cite" in instructions
+    assert "/archive/" in instructions
+    # And still forbidden to invent one.
+    assert "never reconstruct" in instructions
+    # The pre-M4 disclaimer must be gone, or it will refuse to use its own tools.
+    assert "there is no archive" not in instructions
 
     blocks = claude_chat.system_blocks(conn, INDIANA)
-    assert blocks[0]["text"] == instructions
+    assert blocks[0]["text"] == claude_chat.INSTRUCTIONS
 
 
 def test_the_stable_half_is_cached_and_the_volatile_half_is_not(conn):
@@ -472,3 +478,115 @@ def test_a_question_is_shown_as_typed_and_an_answer_is_rendered(client, conn):
     assert "what is 2**3 in python?" in body
     assert "<strong>Eight.</strong>" in body
     assert "<code>2**3</code>" in body
+
+
+# --- the archive tools (M4) -------------------------------------------------
+
+
+def saved(conn, body, **kwargs):
+    from app import archive
+    return archive.ingest(conn, body, source="paste", **kwargs).document_id
+
+
+def test_search_archive_returns_extracts_not_bodies(conn):
+    """Extracts keep the tool result small; get_document is where the text is."""
+    document_id = saved(
+        conn,
+        "The makeup exam is on 12 October. Bring a calculator and nothing else.",
+        subject="Makeup exam",
+    )
+
+    output = json.loads(claude_chat.run_tool(conn, "search_archive",
+                                             {"query": "makeup exam"}, INDIANA))
+
+    assert [item["id"] for item in output["documents"]] == [document_id]
+    assert "calculator" in output["documents"][0]["extract"]
+    # No control characters from the search engine's highlighting.
+    assert "\x02" not in output["documents"][0]["extract"]
+    assert "cite" in output["note"].lower()
+
+
+def test_search_archive_can_be_narrowed_to_a_course(conn):
+    from app import archive
+    wanted = saved(conn, "The lab report is due Friday.", subject="Bio")
+    saved(conn, "A lab section for something else.", subject="Other")
+    archive.link_course(conn, wanted, 1)
+
+    output = json.loads(claude_chat.run_tool(
+        conn, "search_archive", {"query": "lab", "course_id": 1}, INDIANA
+    ))
+
+    assert [item["id"] for item in output["documents"]] == [wanted]
+
+
+def test_search_archive_survives_a_query_full_of_operators(conn):
+    saved(conn, "Something about the midterm.")
+    output = json.loads(claude_chat.run_tool(
+        conn, "search_archive", {"query": 'NEAR "unbalanced *'}, INDIANA
+    ))
+    assert "documents" in output
+
+
+def test_get_document_returns_the_body_verbatim(conn):
+    body = "Line one.\n\n  indented line\n\n**not markdown**"
+    document_id = saved(conn, body, subject="Verbatim")
+
+    output = json.loads(claude_chat.run_tool(conn, "get_document",
+                                             {"id": document_id}, INDIANA))
+
+    assert output["body"] == body
+    assert output["cite_as"] == f"/archive/{document_id}"
+
+
+def test_get_document_says_so_when_the_id_is_wrong(conn):
+    """A model that invented an id must be told, not handed an empty document."""
+    output = json.loads(claude_chat.run_tool(conn, "get_document", {"id": 999}, INDIANA))
+    assert "error" in output
+
+
+def test_the_four_tools_spec_asks_for_are_all_present():
+    """SPEC §10 names exactly these four."""
+    assert {tool["name"] for tool in claude_chat.TOOLS} == {
+        "get_assignments", "get_courses", "search_archive", "get_document",
+    }
+
+
+# --- unsourced archive claims are visible (SPEC §10) ------------------------
+
+
+def store_reply(conn, content, tool_calls):
+    conn.execute("INSERT INTO chat_threads (id, title) VALUES (1, 'x')")
+    conn.execute(
+        "INSERT INTO chat_messages (thread_id, role, content) VALUES (1,'user','q')"
+    )
+    conn.execute(
+        "INSERT INTO chat_messages (thread_id, role, content, tool_calls, model, "
+        "output_tokens) VALUES (1,'assistant',?,?,'claude-opus-5',10)",
+        (content, json.dumps(tool_calls)),
+    )
+
+
+def test_an_archive_answer_without_a_link_is_flagged(client, conn):
+    store_reply(conn, "She said the exam moved to the 12th.",
+                [{"name": "search_archive", "input": {"query": "exam"}}])
+
+    body = client.get("/chat?thread=1").text
+
+    assert "No citation" in body
+
+
+def test_an_archive_answer_with_a_link_is_not_flagged(client, conn):
+    store_reply(conn, "She said the exam moved to the 12th — [1 Sep](/archive/7).",
+                [{"name": "get_document", "input": {"id": 7}}])
+
+    body = client.get("/chat?thread=1").text
+
+    assert "No citation" not in body
+
+
+def test_an_answer_that_never_touched_the_archive_is_not_flagged(client, conn):
+    """A schedule question has nothing to cite, so the warning would be noise."""
+    store_reply(conn, "Your next deadline is Friday.",
+                [{"name": "get_assignments", "input": {}}])
+
+    assert "No citation" not in client.get("/chat?thread=1").text

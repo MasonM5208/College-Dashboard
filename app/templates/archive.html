@@ -1,0 +1,107 @@
+{% extends "base.html" %}
+
+{% block title %}Archive — Semester Dashboard{% endblock %}
+{% block heading %}Archive{% endblock %}
+
+{% block subheading %}
+  <p class="muted">
+    <a href="/">Today</a> · <a href="/chat">Ask</a> ·
+    <a href="/assignments">Everything</a> · <a href="/status">Status</a>
+  </p>
+{% endblock %}
+
+{% block content %}
+
+  <form method="get" action="/archive" class="capture">
+    <input type="search" name="q" value="{{ query }}" autocomplete="off"
+           placeholder="Search everything you have saved" aria-label="Search the archive">
+    {% if course_id %}<input type="hidden" name="course" value="{{ course_id }}">{% endif %}
+    <button type="submit">Search</button>
+  </form>
+
+  <div class="row-actions archive-actions">
+    <a class="chip" href="/archive/add">Paste something in</a>
+    {% if query or course_id %}<a class="chip" href="/archive">Clear</a>{% endif %}
+  </div>
+
+  {% if courses %}
+    <div class="course-filter">
+      <span class="muted">Course:</span>
+      <a class="chip {{ 'chip-done' if not course_id }}"
+         href="/archive{{ '?q=' ~ query if query }}">Any</a>
+      {% for course in courses %}
+        <a class="chip {{ 'chip-done' if course_id == course.id }}"
+           href="/archive?course={{ course.id }}{{ '&q=' ~ query if query }}">{{ course.code or course.name }}</a>
+      {% endfor %}
+    </div>
+  {% endif %}
+
+  <section>
+    {% if query %}
+      <h2>{{ documents | length }} result{{ '' if documents | length == 1 else 's' }}
+        for “{{ query }}”</h2>
+    {% else %}
+      <h2>Most recent</h2>
+    {% endif %}
+
+    {% if documents %}
+      <ul class="stack">
+        {% for item in documents %}
+          <li class="card document">
+            <div class="card-title">
+              <a href="/archive/{{ item.id }}">{{ item.subject }}</a>
+            </div>
+            <div class="muted document-meta">
+              {%- if item.sender %}{{ item.sender }} · {% endif -%}
+              {{ item.received or item.ingested }}
+              {%- if not item.received %} (saved){% endif %}
+              · {{ item.kind.replace('_', ' ') }}
+            </div>
+            {% if item.snippet %}
+              {# Escaped in app/archive.py, where the only markup added is the
+                 <mark> around a search hit. #}
+              <div class="muted document-snippet">{{ item.snippet | safe }}</div>
+            {% endif %}
+            {% if item.courses %}
+              <div class="row-actions">
+                {% for course in item.courses %}
+                  <a class="chip" href="/archive?course={{ course.id }}">{{ course.code or course.name }}</a>
+                {% endfor %}
+              </div>
+            {% endif %}
+          </li>
+        {% endfor %}
+      </ul>
+    {% elif query %}
+      <p class="muted">
+        Nothing matches “{{ query }}”. Words are matched from the start, so
+        <code>lab</code> finds <em>labs</em> and <em>laboratory</em> — but nothing
+        finds a word that was never saved. There
+        {{ 'is' if total == 1 else 'are' }} {{ total }} document{{ '' if total == 1 else 's' }}
+        in the archive altogether.
+      </p>
+    {% else %}
+      <p class="muted">
+        Nothing saved yet. This is the verbatim record: whatever you send here is
+        stored exactly as it arrived and never rewritten, which is what makes it
+        worth checking against in October.
+        {% if ingest_configured %}
+          Share an email to <strong>Save to Semester</strong> on your phone, or
+          <a href="/archive/add">paste one in</a>.
+        {% else %}
+          <a href="/archive/add">Paste one in</a> to start. Saving from the phone
+          needs <code>INGEST_TOKEN</code> on the server — see
+          <code>docs/SETUP.md</code> section 17.
+        {% endif %}
+      </p>
+    {% endif %}
+  </section>
+
+{% endblock %}
+
+{% block footer %}
+  <p class="muted">
+    {{ total }} document{{ '' if total == 1 else 's' }} saved. Searched with SQLite
+    full-text search — no external service sees any of it.
+  </p>
+{% endblock %}

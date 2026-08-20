@@ -6,8 +6,9 @@
 
 {% block subheading %}
   <p class="muted">
-    <a href="/">Today</a> · <a href="/assignments">Everything</a> ·
-    <a href="/status">Status</a> · <a href="/chat/threads">All conversations</a>
+    <a href="/">Today</a> · <a href="/archive">Archive</a> ·
+    <a href="/assignments">Everything</a> · <a href="/status">Status</a> ·
+    <a href="/chat/threads">All conversations</a>
   </p>
 {% endblock %}
 
@@ -60,6 +61,17 @@
             <div class="answer-text">{{ message.html | safe }}</div>
           {% else %}
             <div class="answer-text plain">{{ message.content }}</div>
+          {% endif %}
+          {% if message.uncited %}
+            {# SPEC §10: an archive claim without a link to the original is not
+               verifiable in one tap, so it is shown as suspect rather than
+               presented as fact. #}
+            <div class="banner banner-bad uncited">
+              <strong>No citation.</strong>
+              This answer read your saved messages but did not link to any of them,
+              so there is nothing here to check it against.
+              <a href="/archive">Search the archive</a> before relying on it.
+            </div>
           {% endif %}
           {% if message.role == 'assistant' and message.tokens %}
             <div class="muted cost-line">

@@ -66,3 +66,14 @@ def require(name: str) -> str:
             f"'sudo docker compose up -d'."
         )
     return value
+
+
+def ingest_configured() -> bool:
+    """Whether the share-sheet ingest endpoint has a token to check against.
+
+    Without one the endpoint refuses every request rather than accepting them
+    unauthenticated. Tailscale already keeps strangers off the network (SPEC §11),
+    but the token is what stops any other program on the tailnet — or a Shortcut
+    with a typo in its address — writing into the permanent archive.
+    """
+    return bool(os.environ.get("INGEST_TOKEN", "").strip())

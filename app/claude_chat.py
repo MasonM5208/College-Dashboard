@@ -7,10 +7,12 @@ loop, and a set of tools — "when is my bio lab due and can you explain the ass
 is answered in a single turn without anything here deciding what kind of question
 it was.
 
-Two of SPEC §10's four tools read the `documents` table, which arrives in M4.
-Until then the system prompt says plainly that no message archive exists, because
-a model asked to recall a message it has no tool to look up will otherwise invent
-one — and SPEC §10 makes unsourced archive claims a visible failure.
+All four of SPEC §10's tools are here. Two of them read the archive, and both
+come with the rule SPEC §10 attaches to them: any claim drawn from a saved message
+cites that message as a link to the verbatim original. A confident sentence about
+a deadline that cannot be checked in one tap is worse than no sentence, so the
+prompt demands the citation and app/main.py separately marks a reply that used the
+archive without producing one.
 
 This is a hand-written tool loop rather than the SDK's tool runner. The runner is
 the better default and keeps its own conversation history, but this milestone has
@@ -31,7 +33,7 @@ from zoneinfo import ZoneInfo
 import anthropic
 from markdown_it import MarkdownIt
 
-from app import config, priority
+from app import archive, config, priority
 
 log = logging.getLogger("chat")
 
@@ -148,6 +150,58 @@ TOOLS: list[dict[str, Any]] = [
         ),
         "input_schema": {"type": "object", "properties": {}},
     },
+    {
+        "name": "search_archive",
+        "description": (
+            "Search Mason's saved emails and messages by keyword. Returns matching "
+            "documents with an id, subject, sender, date and a short extract — not "
+            "the full text.\n\n"
+            "Call this whenever a question refers to something he was told rather "
+            "than something in the schedule: what a professor said, what an email "
+            "asked for, whether a date was ever changed, what the instructions "
+            "were. Also call it when a deadline he mentions disagrees with what "
+            "get_assignments returns, because a message is usually where the change "
+            "came from.\n\n"
+            "The archive is curated, not complete — he saves what matters, so "
+            "finding nothing means it was never saved, not that it was never said. "
+            "Search again with different words before concluding that."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "query": {
+                    "type": "string",
+                    "description": (
+                        "Words to look for. Plain words work best; this is keyword "
+                        "search, not a question-answering index, so search for terms "
+                        "that would appear in the message itself."
+                    ),
+                },
+                "course_id": {
+                    "type": "integer",
+                    "description": "Only messages attached to this course. Omit for all.",
+                },
+            },
+            "required": ["query"],
+        },
+    },
+    {
+        "name": "get_document",
+        "description": (
+            "Read one saved message in full, exactly as it arrived, by its id from "
+            "search_archive.\n\n"
+            "Call this before making any claim about what a message actually says. "
+            "The extract from a search is not enough to quote from or to reason "
+            "about a deadline with — read the whole thing first."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "id": {"type": "integer", "description": "The document id."},
+            },
+            "required": ["id"],
+        },
+    },
 ]
 
 
@@ -213,7 +267,70 @@ def run_tool(conn: sqlite3.Connection, name: str, arguments: dict, zone: ZoneInf
             default=str,
         )
 
+    if name == "search_archive":
+        rows = archive.search(
+            conn,
+            str(arguments.get("query", "")),
+            course_id=(
+                int(arguments["course_id"])
+                if arguments.get("course_id") is not None
+                else None
+            ),
+        )
+        links = archive.courses_for_many(conn, [row["id"] for row in rows])
+        return json.dumps(
+            {
+                "documents": [
+                    {
+                        "id": row["id"],
+                        "subject": row["subject"],
+                        "sender": row["sender"],
+                        "received_at": row["received_at"] or row["ingested_at"],
+                        "kind": row["kind"],
+                        # The markers FTS5 wraps hits in are control characters
+                        # meant for the HTML renderer, not for a prompt.
+                        "extract": _plain(row["body_snippet"]),
+                        "courses": [
+                            link["name"] for link in links.get(row["id"], [])
+                        ],
+                    }
+                    for row in rows
+                ],
+                "note": (
+                    "Extracts only. Call get_document before quoting or relying on "
+                    "any of these. Every claim taken from one must cite it."
+                ),
+            },
+            default=str,
+        )
+
+    if name == "get_document":
+        document = archive.get(conn, int(arguments.get("id", 0)))
+        if document is None:
+            return json.dumps({"error": "There is no document with that id."})
+        return json.dumps(
+            {
+                "id": document["id"],
+                "subject": document["subject"],
+                "sender": document["sender"],
+                "received_at": document["received_at"] or document["ingested_at"],
+                "kind": document["kind"],
+                # Verbatim. This is the whole reason the archive exists.
+                "body": document["body"],
+                "courses": [
+                    row["name"] for row in archive.courses_for(conn, document["id"])
+                ],
+                "cite_as": f"/archive/{document['id']}",
+            },
+            default=str,
+        )
+
     raise ChatUnavailable(f"The model asked for a tool that does not exist: {name}")
+
+
+def _plain(snippet: str) -> str:
+    """Strip the search engine's hit markers out of an extract."""
+    return snippet.replace("\x02", "").replace("\x03", "")
 
 
 # --- the system prompt ------------------------------------------------------
@@ -258,13 +375,26 @@ own line, indented by four spaces so it renders as a code block and keeps its \
 alignment.
 - Keep tables small or skip them. A wide table is unreadable on a phone.
 
-What you do not have yet:
+About the saved messages:
 
-- **There is no archive of his messages or emails.** That is not built. If he asks \
-what a professor said, what an email contained, or anything that would require \
-reading his correspondence, tell him plainly that the archive does not exist yet \
-and that you cannot see his messages. Never reconstruct, guess at, or imply the \
-contents of a message. Never claim to remember one.
+- Mason saves emails and Canvas messages into an archive. `search_archive` finds \
+them; `get_document` reads one in full. The stored copy is verbatim and is never \
+edited, which is what makes it worth checking against.
+- **Every claim you draw from a message must cite it.** Write the citation as a \
+Markdown link to the document, with its date, so one tap opens the original: \
+`[Ana Ruiz, 1 Sep](/archive/12)`. A sentence about what a message said, without a \
+link to that message, is not acceptable — Mason has to be able to verify it in one \
+tap or the answer is not usable.
+- Cite the message you actually read with `get_document`, not one you inferred from \
+a search extract.
+- Never reconstruct, guess at, paraphrase from memory, or imply the contents of a \
+message you have not read. If a search finds nothing, say it was not saved rather \
+than filling the gap.
+- The archive is what he chose to keep, so absence means "not saved", never "not \
+said". Say which it is.
+
+What you cannot do:
+
 - You cannot send reminders, change anything in Canvas, or mark work as done. He \
 does that in the dashboard itself.\
 """

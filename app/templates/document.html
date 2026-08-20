@@ -1,0 +1,111 @@
+{% extends "base.html" %}
+
+{% block title %}{{ subject }} — Archive{% endblock %}
+{% block heading %}{{ subject }}{% endblock %}
+
+{% block subheading %}
+  <p class="muted">
+    <a href="/archive">Archive</a> · <a href="/chat">Ask</a> · <a href="/">Today</a>
+  </p>
+{% endblock %}
+
+{% block content %}
+
+  {% if saved == 'new' %}
+    <div class="banner banner-ok"><strong>Saved.</strong> This is the copy that will not change.</div>
+  {% elif saved == 'duplicate' %}
+    <div class="banner banner-ok">
+      <strong>Already had this one.</strong>
+      It matched something saved before, so nothing was duplicated — the new way it
+      arrived was added to the record below.
+    </div>
+  {% endif %}
+
+  <div class="muted document-meta">
+    {%- if document.sender %}From {{ document.sender }} · {% endif -%}
+    {% if received %}{{ received }}{% else %}no date given{% endif %}
+    · {{ document.kind.replace('_', ' ') }}
+  </div>
+
+  {# The verbatim body. A <pre> and nothing else: no Markdown, no link detection,
+     no tidying of whitespace. If this page showed anything other than exactly what
+     arrived, the archive would not be worth checking against. #}
+  <section>
+    <pre class="document-body">{{ document.body }}</pre>
+  </section>
+
+  <section>
+    <h2>Course</h2>
+    {% if attached %}
+      <div class="row-actions">
+        {% for course in attached %}
+          <form method="post" action="/archive/{{ document.id }}/unlink">
+            <input type="hidden" name="course_id" value="{{ course.id }}">
+            <button type="submit" class="chip chip-done">{{ course.name }} ✕</button>
+          </form>
+        {% endfor %}
+      </div>
+      <p class="muted">Tap one to detach it.</p>
+    {% else %}
+      <p class="muted">Not attached to a course. Nothing is guessed — pick one if it belongs to one.</p>
+    {% endif %}
+
+    {% if available %}
+      <form method="post" action="/archive/{{ document.id }}/link" class="rename">
+        <select name="course_id" aria-label="Attach to a course">
+          {% for course in available %}
+            <option value="{{ course.id }}">{{ course.name }}</option>
+          {% endfor %}
+        </select>
+        <button type="submit">Attach</button>
+      </form>
+    {% endif %}
+  </section>
+
+  <section>
+    <h2>How it got here</h2>
+    <ul class="checks">
+      {% for item in sources %}
+        <li>
+          <span class="pill pill-ok">{{ item.source }}</span>
+          <span class="check-name">saved {{ item.when }}</span>
+          <span class="muted"></span>
+        </li>
+      {% endfor %}
+    </ul>
+    {% if sources | length > 1 %}
+      <p class="muted">
+        This message arrived by {{ sources | length }} different routes and is kept
+        once. That is deduplication working.
+      </p>
+    {% endif %}
+    <p class="muted">Saved to the archive {{ ingested }}.</p>
+  </section>
+
+  <section>
+    <h2>Remove it</h2>
+    {% if deleting %}
+      <div class="confirm">
+        <p class="verdict-bad">
+          Delete this message? The copy goes with it, and nothing in the dashboard
+          brings it back — only a backup.
+        </p>
+        <div class="row-actions">
+          <form method="post" action="/archive/{{ document.id }}/delete">
+            <button type="submit" class="chip chip-bad">Yes, delete it</button>
+          </form>
+          <a class="chip" href="/archive/{{ document.id }}">Keep it</a>
+        </div>
+      </div>
+    {% else %}
+      <p class="muted">
+        The words above can never be edited — that is enforced by the database, not
+        just by the code. A message saved by mistake can still be removed entirely.
+      </p>
+      <div class="row-actions">
+        <a class="chip chip-bad" href="/archive/{{ document.id }}?deleting={{ document.id }}">Delete</a>
+      </div>
+    {% endif %}
+  </section>
+
+{% endblock %}

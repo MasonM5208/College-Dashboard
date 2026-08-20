@@ -36,7 +36,7 @@
           {{ 'pass' if facts.checks.fts5 else 'fail' }}
         </span>
         <span class="check-name">Full-text search (FTS5)</span>
-        <span class="muted">What the saved-messages archive will search with.</span>
+        <span class="muted">What the saved-messages archive searches with.</span>
       </li>
       <li>
         <span class="pill {{ 'pill-ok' if facts.checks.migrations_up_to_date else 'pill-bad' }}">
@@ -155,10 +155,9 @@
   <section>
     <h2>What is not built yet</h2>
     <p class="muted">
-      The document archive, which is what lets the chat answer questions about
-      saved emails and messages. After that: the real capacity model, a start/stop
-      timer, and the overload mode that names what is cheapest to sacrifice when a
-      week does not fit.
+      The real capacity model, a start/stop timer, and the overload mode that names
+      what is cheapest to sacrifice when a week does not fit. After that: grades and
+      the workload forecast.
     </p>
   </section>
 

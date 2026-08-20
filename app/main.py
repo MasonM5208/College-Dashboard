@@ -13,6 +13,7 @@ starts uvicorn by hand.
 
 from __future__ import annotations
 
+import hmac
 import json
 import logging
 import os
@@ -25,8 +26,8 @@ from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, Stre
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
-from app import (canvas, claude_chat, config, db, entry, migrate, priority,
-                 reminders, scheduler, status)
+from app import (archive, canvas, claude_chat, config, db, entry, migrate,
+                 priority, reminders, scheduler, status)
 
 log = logging.getLogger("dashboard")
 
@@ -858,11 +859,364 @@ def edit_course(
 
 
 
+# --- the archive ------------------------------------------------------------
+#
+# SPEC §7: every path in — the iOS share sheet, the paste form, any future mail
+# bridge — converges on archive.ingest(). The routes below are adapters; none of
+# them writes to `documents` itself.
+
+
+def _check_ingest_token(request: Request) -> None:
+    """Authorise a machine-to-machine save.
+
+    Tailscale already keeps strangers off the network (SPEC §11). The token is
+    what stops anything *else* on the tailnet writing into the permanent archive,
+    including a Shortcut pointed at the wrong address.
+
+    Nothing here — not the response, not the log — ever contains either token.
+    hmac.compare_digest rather than == because a plain comparison returns early on
+    the first differing byte, and the timing of that is a slow way to read a
+    secret.
+    """
+    if not config.ingest_configured():
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                "Saving from the phone is switched off: INGEST_TOKEN is not set on "
+                "the server. See docs/SETUP.md section 17."
+            ),
+        )
+
+    scheme, _, presented = request.headers.get("authorization", "").partition(" ")
+    expected = os.environ.get("INGEST_TOKEN", "").strip()
+    if scheme.lower() != "bearer" or not hmac.compare_digest(presented.strip(), expected):
+        raise HTTPException(status_code=401, detail="Not authorised.")
+
+
+@app.post("/ingest")
+async def ingest_endpoint(request: Request):
+    """Save a message sent by the iPhone Shortcut.
+
+    Accepts JSON or form encoding, because which of the two is easier to build in
+    Shortcuts depends on the iOS version, and neither is harder to read here.
+
+    A body that is already in the archive is a **success**, not an error: from the
+    phone's point of view "it is saved" is true either way, and a red failure
+    banner for sharing something twice would teach the wrong lesson about a
+    feature whose whole purpose is capture without thinking.
+    """
+    _check_ingest_token(request)
+
+    if "application/json" in request.headers.get("content-type", ""):
+        try:
+            payload = await request.json()
+        except Exception:  # noqa: BLE001 — any parse failure is the same answer
+            raise HTTPException(status_code=400, detail="The body is not valid JSON.")
+        if not isinstance(payload, dict):
+            raise HTTPException(
+                status_code=400, detail="Expected a JSON object with a 'body' field."
+            )
+    else:
+        payload = dict(await request.form())
+
+    def field(name: str) -> str | None:
+        value = payload.get(name)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+        return None
+
+    body = payload.get("body")
+    if not isinstance(body, str) or not body.strip():
+        raise HTTPException(
+            status_code=400,
+            detail="Nothing to save: the request had no 'body' field with text in it.",
+        )
+
+    source = field("source") or "share_sheet"
+    if source not in archive.SOURCES:
+        raise HTTPException(status_code=400, detail=f"Unknown source {source!r}.")
+
+    kind = field("kind") or "other"
+    if kind not in archive.KINDS:
+        kind = "other"
+
+    conn = db.connect()
+    try:
+        result = archive.ingest(
+            conn,
+            body,
+            source=source,
+            subject=field("subject"),
+            sender=field("sender"),
+            received_at=field("received_at"),
+            kind=kind,
+            external_id=field("external_id"),
+            raw_headers=field("raw_headers"),
+        )
+    except archive.ArchiveError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from None
+    finally:
+        conn.close()
+
+    return JSONResponse(
+        {
+            "ok": True,
+            "document_id": result.document_id,
+            "created": result.created,
+            "source_added": result.source_added,
+            # The Shortcut shows this, so sharing something gives back a link
+            # straight to what was saved.
+            "url": f"/archive/{result.document_id}",
+        }
+    )
+
+
+def _shown_documents(conn, rows, zone) -> list[dict]:
+    links = archive.courses_for_many(conn, [row["id"] for row in rows])
+    return [
+        {
+            "id": row["id"],
+            "subject": row["subject"] or "(no subject)",
+            "sender": row["sender"],
+            "kind": row["kind"],
+            # What the message says it is, falling back to when it was saved.
+            # Both are shown rather than one, because "received last Tuesday,
+            # saved this morning" is ordinary and the difference matters when
+            # checking whether something was missed.
+            "received": local_time(row["received_at"], zone) if row["received_at"] else None,
+            "ingested": local_time(row["ingested_at"], zone),
+            "snippet": archive.snippet_html(row["body_snippet"]),
+            "courses": links.get(row["id"], []),
+        }
+        for row in rows
+    ]
+
+
+@app.get("/archive")
+def archive_page(request: Request, q: str = "", course: int | None = None):
+    """Search the archive, or see the newest of it when nothing is typed."""
+    query = q.strip()
+    conn = db.connect()
+    try:
+        rows = (
+            archive.search(conn, query, course_id=course)
+            if query
+            else archive.recent(conn)
+        )
+        documents = _shown_documents(conn, rows, request.app.state.zone)
+        total = archive.count(conn)
+        courses = _courses(conn)
+        configured = config.ingest_configured()
+    finally:
+        conn.close()
+
+    return templates.TemplateResponse(
+        request=request,
+        name="archive.html",
+        context={
+            "documents": documents,
+            "query": query,
+            "course_id": course,
+            "courses": courses,
+            "total": total,
+            "ingest_configured": configured,
+        },
+    )
+
+
+@app.get("/archive/add")
+def archive_add_form(request: Request, error: str | None = None):
+    conn = db.connect()
+    try:
+        courses = _courses(conn)
+    finally:
+        conn.close()
+
+    return templates.TemplateResponse(
+        request=request,
+        name="archive_add.html",
+        context={"courses": courses, "error": error, "kinds": archive.KINDS},
+    )
+
+
+@app.post("/archive/add")
+def archive_add(
+    request: Request,
+    body: str = Form(""),
+    subject: str = Form(""),
+    sender: str = Form(""),
+    received: str = Form(""),
+    kind: str = Form("other"),
+    course_id: str = Form(""),
+):
+    """The paste form. Same pipeline as the phone, different front door."""
+    from urllib.parse import quote
+
+    zone = request.app.state.zone
+    try:
+        received_at = entry.parse_when(received, zone)
+    except entry.EntryError as exc:
+        return RedirectResponse(f"/archive/add?error={quote(str(exc))}", status_code=303)
+
+    conn = db.connect()
+    try:
+        result = archive.ingest(
+            conn,
+            body,
+            source="paste",
+            subject=subject,
+            sender=sender,
+            received_at=received_at,
+            kind=kind if kind in archive.KINDS else "other",
+        )
+        if course_id.strip().isdigit():
+            archive.link_course(conn, result.document_id, int(course_id))
+    except archive.ArchiveError as exc:
+        return RedirectResponse(f"/archive/add?error={quote(str(exc))}", status_code=303)
+    finally:
+        conn.close()
+
+    # `saved=new` and `saved=duplicate` are different messages on the next page:
+    # a duplicate is not a failure, but silently showing the same "Saved" banner
+    # would hide that dedup did something.
+    outcome = "new" if result.created else "duplicate"
+    return RedirectResponse(
+        f"/archive/{result.document_id}?saved={outcome}", status_code=303
+    )
+
+
+@app.get("/archive/{document_id}")
+def document_page(
+    request: Request,
+    document_id: int,
+    saved: str | None = None,
+    deleting: int | None = None,
+):
+    """One message, exactly as it arrived.
+
+    This is what a citation in the chat links to, so it shows the body verbatim in
+    a <pre> and renders nothing: no Markdown, no link detection, no tidying. If
+    the archive's copy differed in any way from what was received, the whole point
+    of having it would be gone.
+    """
+    conn = db.connect()
+    try:
+        document = archive.get(conn, document_id)
+        if document is None:
+            raise HTTPException(status_code=404, detail="No such document")
+
+        sources = archive.sources_for(conn, document_id)
+        attached = archive.courses_for(conn, document_id)
+        attached_ids = {row["id"] for row in attached}
+        available = [row for row in _courses(conn) if row["id"] not in attached_ids]
+    finally:
+        conn.close()
+
+    zone = request.app.state.zone
+    return templates.TemplateResponse(
+        request=request,
+        name="document.html",
+        context={
+            "document": document,
+            "subject": document["subject"] or "(no subject)",
+            "received": (
+                local_time(document["received_at"], zone)
+                if document["received_at"]
+                else None
+            ),
+            "ingested": local_time(document["ingested_at"], zone),
+            "sources": [
+                {
+                    "source": row["source"].replace("_", " "),
+                    "when": local_time(row["ingested_at"], zone),
+                }
+                for row in sources
+            ],
+            "attached": attached,
+            "available": available,
+            "saved": saved,
+            "deleting": deleting == document_id,
+        },
+    )
+
+
+@app.post("/archive/{document_id}/link")
+def link_document(document_id: int, request: Request, course_id: str = Form(...)):
+    if not course_id.strip().isdigit():
+        return _back(request)
+
+    conn = db.connect()
+    try:
+        if archive.get(conn, document_id) is None:
+            raise HTTPException(status_code=404, detail="No such document")
+        archive.link_course(conn, document_id, int(course_id))
+    finally:
+        conn.close()
+    return _back(request)
+
+
+@app.post("/archive/{document_id}/unlink")
+def unlink_document(document_id: int, request: Request, course_id: str = Form(...)):
+    if not course_id.strip().isdigit():
+        return _back(request)
+
+    conn = db.connect()
+    try:
+        archive.unlink_course(conn, document_id, int(course_id))
+    finally:
+        conn.close()
+    return _back(request)
+
+
+@app.post("/archive/{document_id}/delete")
+def delete_document(document_id: int, request: Request):
+    """Remove a document, behind the confirmation the page renders in place.
+
+    An immutable body does not mean an undeletable row: a mis-paste has to be
+    removable. What cannot happen is a message being quietly *rewritten*, which is
+    what the database trigger prevents.
+    """
+    conn = db.connect()
+    try:
+        if archive.get(conn, document_id) is None:
+            raise HTTPException(status_code=404, detail="No such document")
+        archive.delete(conn, document_id)
+    finally:
+        conn.close()
+    return RedirectResponse("/archive", status_code=303)
+
+
 # --- chat -------------------------------------------------------------------
 #
 # SPEC §10: one endpoint, tool-based routing, no intent classifier. Whether a
 # question is about deadlines or about coursework is Claude's decision, made by
 # choosing a tool, not ours made by inspecting the text.
+
+
+# The tools whose answers must carry a citation (SPEC §10).
+ARCHIVE_TOOLS = ("search_archive", "get_document")
+
+
+def _uncited_archive_claim(row) -> bool:
+    """Whether a reply leaned on the archive without linking to it.
+
+    SPEC §10: "make unsourced archive claims a visible UI state". The rule is
+    enforced in the system prompt, and a prompt is an instruction rather than a
+    guarantee — so the page also checks. A turn that read the archive and produced
+    no link to it gets a visible warning instead of quietly reading as verified.
+
+    Computed here from the tool calls already stored on the message: no extra
+    column, and nothing a later edit to the prompt can switch off by accident.
+    """
+    if row["role"] != "assistant" or not row["tool_calls"]:
+        return False
+    try:
+        calls = json.loads(row["tool_calls"])
+    except (TypeError, ValueError):
+        return False
+
+    used_archive = any(call.get("name") in ARCHIVE_TOOLS for call in calls)
+    return used_archive and "/archive/" not in (row["content"] or "")
 
 
 def _thread_messages(conn, thread_id: int):
@@ -994,6 +1348,7 @@ def chat_page(
             "tokens": row["input_tokens"] + row["output_tokens"],
             "cost": claude_chat.message_cost(row),
             "model": row["model"],
+            "uncited": _uncited_archive_claim(row),
         }
         for row in messages
         if row["role"] in ("user", "assistant")
