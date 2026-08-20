@@ -395,3 +395,39 @@ def test_a_successful_canvas_poll_is_logged(db_path, monkeypatch, caplog):
 
     assert "Canvas sync:" in caplog.text
     assert "7 events" in caplog.text
+
+
+# --- the reminder claim is not overstated -----------------------------------
+
+
+def test_the_status_page_does_not_claim_reminders_are_on_the_phone(client, db_path):
+    """August 2026: iCloud accepted twelve to-dos that reached no device.
+
+    The page counted successful writes and called them "alerts on your phone",
+    which is an assumption wearing the clothes of a fact. SPEC's stated worst
+    failure is stale data presented confidently, and a dashboard that says the
+    reminders are handled when they are not is exactly that.
+    """
+    conn = db.connect(db_path)
+    try:
+        conn.execute(
+            "INSERT INTO terms (id,name,start_date,end_date) "
+            "VALUES (1,'FA26','2026-08-24','2026-12-18')"
+        )
+        conn.execute("INSERT INTO courses (id,term_id,name) VALUES (1,1,'Biology')")
+        conn.execute(
+            "INSERT INTO assignments (id,course_id,title,type,due_at,status,source) "
+            "VALUES (1,1,'Lab 3','worksheet','2026-09-01T23:59:00Z','not_started','manual')"
+        )
+        conn.execute(
+            "INSERT INTO reminder_instances (assignment_id, kind, channel, fire_at, "
+            "state) VALUES (1,'due_by','caldav','2026-08-31T12:00:00Z','sent')"
+        )
+    finally:
+        conn.close()
+
+    body = client.get("/status").text
+
+    assert "on your phone" not in body
+    assert "accepted by iCloud" in body
+    assert "not reaching your phone" in body

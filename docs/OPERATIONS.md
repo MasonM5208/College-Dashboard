@@ -583,6 +583,60 @@ way.
   sudo docker compose run --rm app python -c "from app import db; c=db.connect(); c.execute(\"UPDATE sync_state SET cursor=NULL WHERE source='caldav_push'\"); c.close()"
   ```
 
+### KNOWN ISSUE — reminders reach iCloud but appear nowhere (August 2026)
+
+**Status: deferred, not fixed. Do not rely on a reminder firing.**
+
+Written down in full because the next attempt should start from here rather than
+from the beginning.
+
+**What works.** Everything on this side of the connection:
+
+- Discovery reaches the account, the calendar home, and the eight collections in
+  it. It correctly rejects the scheduling endpoints and correctly picks the one
+  reminders list, `Reminders ⚠️`, at
+  `.../11509735850/calendars/1252b4f0-.../`.
+- Twelve `VTODO`s are written, one per assignment, each carrying its ladder of
+  `VALARM`s. Apple accepts every `PUT`.
+- `--list` reads them straight back: **14 items in the list, 12 of them ours.**
+  So they are stored, and Apple will hand them over when asked.
+
+**What does not work.** They appear in the Reminders app on no device, and not in
+Reminders on iCloud.com either. The two items in that list which are *not* ours
+are equally invisible, which rules out the obvious explanations — this is not
+iCloud Reminders being switched off on the phone, and not a second Apple ID,
+because iCloud's own web client does not show them either.
+
+**The likeliest explanation**, untested: since iOS 13, Apple migrated Reminders
+to a store that is not the CalDAV one. An upgraded account keeps answering CalDAV
+faithfully — writes succeed, reads return what was written — while the Reminders
+app reads from somewhere else entirely. The CalDAV endpoint becomes a
+write-only room with a door nobody uses.
+
+**What to try when picking this up:**
+
+1. Make a brand-new list in the Reminders app on the phone, re-run the probe, and
+   see whether it now discovers *two* to-do collections. If the new list appears
+   over CalDAV and the old one does not, the migration theory is confirmed and
+   the fix is to write to the newly-created list.
+2. Create a reminder on the phone in `Reminders ⚠️` and run `--list`. If it does
+   not show up there, CalDAV and the app are definitively looking at different
+   stores, and no amount of work on this side will help.
+3. If both confirm the split, **fall back to calendar events**. Writing a
+   `VEVENT` with a `VALARM` into one of the existing calendars — `School` is the
+   obvious one — is a small change to `build_todo`, and the Calendar app
+   unquestionably renders those. A calendar entry is a worse fit than a checklist,
+   but SPEC §12's criterion is that an alert fires on the iPhone with the laptop
+   closed, and this clears it.
+
+**Meanwhile the push is left running.** It costs nothing, it writes the same
+twelve deterministic file names rather than accumulating copies, and if Apple's
+behaviour changes the reminders simply start appearing. To switch it off entirely,
+comment out `CALDAV_USERNAME` and `CALDAV_PASSWORD` in
+`/etc/college-dashboard/env` and restart.
+
+The status page says this too, rather than reporting the pushes as successes.
+
 ### The dashboard says reminders were sent, but the phone shows none
 
 **Tailscale is not involved.** Reminders reach the phone through iCloud, over the

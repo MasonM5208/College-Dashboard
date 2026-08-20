@@ -68,13 +68,22 @@ completed by M4: all four of SPEC §10's tools are present, and any claim drawn
 from a saved message carries a tappable link to the verbatim original.
 Conversations are kept separate, and can be named, kept and deleted.
 
-**M3 — Reminders: built, awaiting the first real push.** Each assignment becomes
+**M3 — Reminders: built, and blocked by iCloud.** Each assignment becomes
 one item in Apple Reminders carrying its whole ladder of alerts, pushed over
 CalDAV. Because the alerts live on the phone, they fire whether or not the server
 is running. Quiet hours are respected, and a moved deadline retires its old
 reminders and rebuilds them rather than moving them.
 
-With that, **SPEC §12's useful core (M0–M3) is complete.**
+Every part of that works up to the point Apple takes delivery: discovery finds the
+reminders list, the writes are accepted, and reading the collection back returns
+the twelve to-dos. They then appear in the Reminders app on no device, and not on
+iCloud.com either — including the items in that list which the dashboard did not
+put there. The likeliest explanation is that Apple's Reminders app and its CalDAV
+endpoint no longer read the same store. **Deferred rather than fixed**;
+`docs/OPERATIONS.md` records what was established and what to try next, including
+the calendar-event fallback that would satisfy SPEC §12's criterion.
+
+So **M0–M2 and M4–M5 are working; M3 is built but not delivering.**
 
 **M4 — Document archive: built, awaiting its first real save.** A verbatim record
 of the messages that matter, saved from the iPhone share sheet in two taps or

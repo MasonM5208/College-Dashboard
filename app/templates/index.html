@@ -134,15 +134,21 @@
     <h2>Reminders</h2>
     {% if facts.reminders.configured %}
       <p class="muted">
-        {{ facts.reminders.on_phone }} alert{{ '' if facts.reminders.on_phone == 1 else 's' }}
-        on your phone, across {{ facts.reminders.assignments_covered }}
+        {{ facts.reminders.sent_to_icloud }} alert{{ '' if facts.reminders.sent_to_icloud == 1 else 's' }}
+        accepted by iCloud, across {{ facts.reminders.assignments_covered }}
         assignment{{ '' if facts.reminders.assignments_covered == 1 else 's' }}.
         {%- if facts.reminders.waiting %}
           {{ facts.reminders.waiting }} waiting for the next sync.
         {%- endif %}
-        Once an alert is on the phone it fires whether or not this server is
-        running.
       </p>
+      <div class="banner banner-bad">
+        <strong>These are not reaching your phone.</strong>
+        iCloud accepts them and hands them back when asked, but they appear in
+        the Reminders app on no device, and not on iCloud.com either. Deferred
+        rather than fixed — <code>docs/OPERATIONS.md</code> has what was
+        established, so picking it up again does not start from nothing.
+        <strong>Do not rely on a reminder firing.</strong>
+      </div>
     {% else %}
       <p class="muted">
         Apple Reminders is not connected, so nothing reaches your phone. Add

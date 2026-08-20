@@ -138,7 +138,15 @@ def reminder_summary(conn: sqlite3.Connection) -> dict:
     from app import caldav_push
 
     return {
-        "on_phone": one("SELECT COUNT(*) FROM reminder_instances WHERE state = 'sent'"),
+        # Named for what it actually measures. It used to be called on_phone,
+        # which was an assumption rather than a fact: it counts writes Apple
+        # accepted, and in August 2026 Apple accepted twelve to-dos that never
+        # appeared in Reminders on any device. Stale data presented confidently
+        # is the failure this project cares most about, so the name and the
+        # wording on the page both stop short of what has been verified.
+        "sent_to_icloud": one(
+            "SELECT COUNT(*) FROM reminder_instances WHERE state = 'sent'"
+        ),
         "waiting": one("SELECT COUNT(*) FROM reminder_instances WHERE state = 'pending'"),
         "assignments_covered": one(
             "SELECT COUNT(DISTINCT assignment_id) FROM reminder_instances "
